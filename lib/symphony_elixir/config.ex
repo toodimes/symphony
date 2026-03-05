@@ -450,7 +450,23 @@ defmodule SymphonyElixir.Config do
         port
 
       _ ->
-        get_in(validated_workflow_options(), [:server, :port])
+        case get_in(validated_workflow_options(), [:server, :port]) do
+          port when is_integer(port) and port >= 0 -> port
+          _ -> env_server_port()
+        end
+    end
+  end
+
+  defp env_server_port do
+    case System.get_env("SYMPHONY_SERVER_PORT") do
+      nil ->
+        nil
+
+      val ->
+        case Integer.parse(val) do
+          {port, _} when port >= 0 -> port
+          _ -> nil
+        end
     end
   end
 
