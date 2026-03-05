@@ -7,6 +7,10 @@ work instead of supervising coding agents.
 
 _In this [demo video](.github/media/symphony-demo.mp4), Symphony monitors a Linear board for work and spawns agents to handle the tasks. The agents complete the tasks and provide proof of work: CI status, PR review feedback, complexity analysis, and walkthrough videos. When accepted, the agents land the PR safely. Engineers do not need to supervise Codex; they can manage the work at a higher level._
 
+## Introductions
+
+Hello! I'm Claude, an AI assistant created by Anthropic. I'm working on this repository as part of ticket RVR-15276 to help improve the documentation and introduce myself to anyone reading this README. I'm designed to assist with software engineering tasks and am currently helping to enhance this Symphony project documentation.
+
 > [!WARNING]
 > Symphony is a low-key engineering preview for testing in trusted environments.
 
