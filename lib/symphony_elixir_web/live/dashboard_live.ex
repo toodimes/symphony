@@ -5,9 +5,9 @@ defmodule SymphonyElixirWeb.DashboardLive do
 
   use Phoenix.LiveView, layout: {SymphonyElixirWeb.Layouts, :app}
 
+  alias SymphonyElixir.Config
   alias SymphonyElixirWeb.{Endpoint, ObservabilityPubSub, Presenter}
   @runtime_tick_ms 1_000
-  @countdown_tick_ms 1_000
 
   @impl true
   def mount(_params, _session, socket) do
@@ -16,12 +16,11 @@ defmodule SymphonyElixirWeb.DashboardLive do
       |> assign(:payload, load_payload())
       |> assign(:now, DateTime.utc_now())
       |> assign(:expanded, MapSet.new())
-      |> assign(:refresh_countdown_seconds, div(@runtime_tick_ms, 1000))
+      |> assign(:agent_backend, Config.agent_backend())
 
     if connected?(socket) do
       :ok = ObservabilityPubSub.subscribe()
       schedule_runtime_tick()
-      schedule_countdown_tick()
     end
 
     {:ok, socket}
@@ -34,17 +33,7 @@ defmodule SymphonyElixirWeb.DashboardLive do
     {:noreply,
      socket
      |> assign(:payload, load_payload())
-     |> assign(:now, DateTime.utc_now())
-     |> assign(:refresh_countdown_seconds, div(@runtime_tick_ms, 1000))}
-  end
-
-  @impl true
-  def handle_info(:countdown_tick, socket) do
-    current_countdown = Map.get(socket.assigns, :refresh_countdown_seconds, 0)
-    new_countdown = max(current_countdown - 1, 0)
-
-    schedule_countdown_tick()
-    {:noreply, assign(socket, :refresh_countdown_seconds, new_countdown)}
+     |> assign(:now, DateTime.utc_now())}
   end
 
   @impl true
@@ -52,11 +41,19 @@ defmodule SymphonyElixirWeb.DashboardLive do
     {:noreply,
      socket
      |> assign(:payload, load_payload())
-     |> assign(:now, DateTime.utc_now())}
+     |> assign(:now, DateTime.utc_now())
+     |> assign(:agent_backend, Config.agent_backend())}
   end
 
   @impl true
   def handle_event("noop", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("set_backend", %{"backend" => backend}, socket)
+      when backend in ["claude", "codex"] do
+    :ok = Config.set_agent_backend_override(backend)
+    {:noreply, assign(socket, :agent_backend, backend)}
+  end
 
   @impl true
   def handle_event("toggle_row", %{"id" => issue_id}, socket) do
@@ -100,8 +97,22 @@ defmodule SymphonyElixirWeb.DashboardLive do
               Offline
             </span>
             <span class="status-badge status-badge-refresh">
-              Refreshes in <%= @refresh_countdown_seconds %>s
+              <%= format_next_refresh(@payload[:polling]) %>
             </span>
+            <div class="backend-toggle">
+              <button
+                type="button"
+                class={"backend-toggle-option #{if @agent_backend == "claude", do: "active"}"}
+                phx-click="set_backend"
+                phx-value-backend="claude"
+              >Claude</button>
+              <button
+                type="button"
+                class={"backend-toggle-option #{if @agent_backend == "codex", do: "active"}"}
+                phx-click="set_backend"
+                phx-value-backend="codex"
+              >Codex</button>
+            </div>
           </div>
         </div>
       </header>
@@ -404,12 +415,17 @@ defmodule SymphonyElixirWeb.DashboardLive do
     end
   end
 
-  defp schedule_runtime_tick do
-    Process.send_after(self(), :runtime_tick, @runtime_tick_ms)
+  defp format_next_refresh(%{checking?: true}), do: "Checking now\u2026"
+
+  defp format_next_refresh(%{next_poll_in_ms: due_in_ms}) when is_integer(due_in_ms) do
+    seconds = div(max(due_in_ms, 0) + 999, 1000)
+    "Refreshes in #{seconds}s"
   end
 
-  defp schedule_countdown_tick do
-    Process.send_after(self(), :countdown_tick, @countdown_tick_ms)
+  defp format_next_refresh(_), do: "Next refresh: n/a"
+
+  defp schedule_runtime_tick do
+    Process.send_after(self(), :runtime_tick, @runtime_tick_ms)
   end
 
   defp pretty_value(nil), do: "n/a"

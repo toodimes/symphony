@@ -212,6 +212,7 @@ pre,
 
 .status-stack {
   display: grid;
+  gap: 8px;
   justify-items: end;
   align-content: start;
   min-width: min(100%, 9rem);
@@ -259,6 +260,51 @@ pre,
 
 [data-phx-main].phx-connected .status-badge-offline {
   display: none;
+}
+
+/* ── Backend toggle ────────────────────────────────────────────── */
+
+.backend-toggle {
+  display: inline-flex;
+  border-radius: 9999px;
+  border: 1px solid var(--line-strong);
+  overflow: hidden;
+}
+
+.backend-toggle-option {
+  appearance: none;
+  border: none;
+  border-radius: 0;
+  padding: 6px 14px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  background: var(--card-muted);
+  background-image: none;
+  color: var(--muted);
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.backend-toggle-option:hover {
+  background: var(--line-strong);
+  background-image: none;
+  color: var(--ink);
+  transform: none;
+  box-shadow: none;
+}
+
+.backend-toggle-option.active {
+  background: var(--accent-gradient);
+  color: #000000;
+  border-color: transparent;
+}
+
+.backend-toggle-option.active:hover {
+  opacity: 0.9;
+  background: var(--accent-gradient);
+  color: #000000;
 }
 
 .status-badge-refresh {

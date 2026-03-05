@@ -314,7 +314,16 @@ defmodule SymphonyElixir.Config do
 
   @spec agent_backend() :: String.t()
   def agent_backend do
-    get_in(validated_workflow_options(), [:agent, :backend])
+    case Application.get_env(:symphony_elixir, :agent_backend_override) do
+      value when value in ["claude", "codex"] -> value
+      _ -> get_in(validated_workflow_options(), [:agent, :backend])
+    end
+  end
+
+  @spec set_agent_backend_override(String.t()) :: :ok
+  def set_agent_backend_override(backend) when backend in ["claude", "codex"] do
+    Application.put_env(:symphony_elixir, :agent_backend_override, backend)
+    :ok
   end
 
   @spec agent_stall_timeout_ms() :: non_neg_integer()
