@@ -326,7 +326,6 @@ pre,
   font-size: 0.94rem;
 }
 
-.issue-stack,
 .session-stack,
 .detail-stack,
 .token-stack {
@@ -429,6 +428,131 @@ pre,
 .error-copy {
   margin: 0.45rem 0 0;
   color: var(--danger);
+}
+
+.expandable-row {
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+
+.expandable-row:hover {
+  background: var(--page-soft);
+}
+
+.row-chevron {
+  display: inline-block;
+  width: 1em;
+  color: var(--muted);
+  font-size: 0.82rem;
+  flex-shrink: 0;
+}
+
+.issue-stack {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+a.issue-id {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+a.issue-id:hover {
+  color: var(--accent);
+}
+
+.expanded-detail-row td {
+  padding: 0;
+  border-top: none;
+}
+
+.event-log-panel {
+  padding: 0.75rem 1rem 1rem;
+  background: var(--page-soft);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.event-log-title {
+  margin: 0 0 0.6rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.event-log-list {
+  display: grid;
+  gap: 0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.event-log-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.event-log-entry:last-child {
+  border-bottom: none;
+}
+
+.event-log-time {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.event-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card-muted);
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.event-badge-success {
+  background: var(--accent-soft);
+  border-color: rgba(16, 163, 127, 0.18);
+  color: var(--accent-ink);
+}
+
+.event-badge-danger {
+  background: var(--danger-soft);
+  border-color: #f6d3cf;
+  color: var(--danger);
+}
+
+.event-badge-warning {
+  background: #fff7e8;
+  border-color: #f1d8a6;
+  color: #8a5a00;
+}
+
+.event-log-message {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
 }
 
 @media (max-width: 860px) {

@@ -110,6 +110,7 @@ defmodule SymphonyElixir.Orchestrator do
               |> complete_issue(issue_id)
               |> schedule_issue_retry(issue_id, 1, %{
                 identifier: running_entry.identifier,
+                issue_url: running_entry.issue.url,
                 delay_type: :continuation
               })
 
@@ -120,6 +121,7 @@ defmodule SymphonyElixir.Orchestrator do
 
               schedule_issue_retry(state, issue_id, next_attempt, %{
                 identifier: running_entry.identifier,
+                issue_url: running_entry.issue.url,
                 error: "agent exited: #{inspect(reason)}"
               })
           end
@@ -398,6 +400,7 @@ defmodule SymphonyElixir.Orchestrator do
       |> terminate_running_issue(issue_id, false)
       |> schedule_issue_retry(issue_id, next_attempt, %{
         identifier: identifier,
+        issue_url: running_entry[:issue] && running_entry.issue.url,
         error: "stalled for #{elapsed_ms}ms without codex activity"
       })
     else
@@ -654,6 +657,7 @@ defmodule SymphonyElixir.Orchestrator do
             last_codex_message: nil,
             last_codex_timestamp: nil,
             last_codex_event: nil,
+            codex_event_log: [],
             codex_app_server_pid: nil,
             codex_input_tokens: 0,
             codex_output_tokens: 0,
@@ -679,6 +683,7 @@ defmodule SymphonyElixir.Orchestrator do
 
         schedule_issue_retry(state, issue.id, next_attempt, %{
           identifier: issue.identifier,
+          issue_url: issue.url,
           error: "failed to spawn agent: #{inspect(reason)}"
         })
     end
@@ -720,6 +725,7 @@ defmodule SymphonyElixir.Orchestrator do
     old_timer = Map.get(previous_retry, :timer_ref)
     due_at_ms = System.monotonic_time(:millisecond) + delay_ms
     identifier = pick_retry_identifier(issue_id, previous_retry, metadata)
+    issue_url = pick_retry_issue_url(previous_retry, metadata)
     error = pick_retry_error(previous_retry, metadata)
 
     if is_reference(old_timer) do
@@ -740,6 +746,7 @@ defmodule SymphonyElixir.Orchestrator do
             timer_ref: timer_ref,
             due_at_ms: due_at_ms,
             identifier: identifier,
+            issue_url: issue_url,
             error: error
           })
     }
@@ -846,6 +853,7 @@ defmodule SymphonyElixir.Orchestrator do
          attempt + 1,
          Map.merge(metadata, %{
            identifier: issue.identifier,
+           issue_url: issue.url,
            error: "no available orchestrator slots"
          })
        )}
@@ -881,6 +889,10 @@ defmodule SymphonyElixir.Orchestrator do
 
   defp pick_retry_identifier(issue_id, previous_retry, metadata) do
     metadata[:identifier] || Map.get(previous_retry, :identifier) || issue_id
+  end
+
+  defp pick_retry_issue_url(previous_retry, metadata) do
+    metadata[:issue_url] || Map.get(previous_retry, :issue_url)
   end
 
   defp pick_retry_error(previous_retry, metadata) do
@@ -969,11 +981,13 @@ defmodule SymphonyElixir.Orchestrator do
           codex_input_tokens: metadata.codex_input_tokens,
           codex_output_tokens: metadata.codex_output_tokens,
           codex_total_tokens: metadata.codex_total_tokens,
+          codex_event_log: Map.get(metadata, :codex_event_log, []),
           turn_count: Map.get(metadata, :turn_count, 0),
           started_at: metadata.started_at,
           last_codex_timestamp: metadata.last_codex_timestamp,
           last_codex_message: metadata.last_codex_message,
           last_codex_event: metadata.last_codex_event,
+          issue_url: metadata.issue.url,
           runtime_seconds: running_seconds(metadata.started_at, now)
         }
       end)
@@ -986,6 +1000,7 @@ defmodule SymphonyElixir.Orchestrator do
           attempt: attempt,
           due_in_ms: max(0, due_at_ms - now_ms),
           identifier: Map.get(retry, :identifier),
+          issue_url: Map.get(retry, :issue_url),
           error: Map.get(retry, :error)
         }
       end)
@@ -1022,6 +1037,8 @@ defmodule SymphonyElixir.Orchestrator do
      }, state}
   end
 
+  @max_event_log_entries 200
+
   defp integrate_codex_update(running_entry, %{event: event, timestamp: timestamp} = update) do
     token_delta = extract_token_delta(running_entry, update)
     codex_input_tokens = Map.get(running_entry, :codex_input_tokens, 0)
@@ -1033,12 +1050,17 @@ defmodule SymphonyElixir.Orchestrator do
     last_reported_total = Map.get(running_entry, :codex_last_reported_total_tokens, 0)
     turn_count = Map.get(running_entry, :turn_count, 0)
 
+    log_entry = %{event: event, timestamp: timestamp, message: summarize_codex_update(update)}
+    event_log = Map.get(running_entry, :codex_event_log, [])
+    updated_log = Enum.take([log_entry | event_log], @max_event_log_entries)
+
     {
       Map.merge(running_entry, %{
         last_codex_timestamp: timestamp,
         last_codex_message: summarize_codex_update(update),
         session_id: session_id_for_update(running_entry.session_id, update),
         last_codex_event: event,
+        codex_event_log: updated_log,
         codex_app_server_pid: codex_app_server_pid_for_update(codex_app_server_pid, update),
         codex_input_tokens: codex_input_tokens + token_delta.input_tokens,
         codex_output_tokens: codex_output_tokens + token_delta.output_tokens,
