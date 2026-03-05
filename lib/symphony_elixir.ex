@@ -23,20 +23,50 @@ defmodule SymphonyElixir.Application do
   def start(_type, _args) do
     :ok = SymphonyElixir.LogFile.configure()
 
-    children = [
-      {Phoenix.PubSub, name: SymphonyElixir.PubSub},
-      {Task.Supervisor, name: SymphonyElixir.TaskSupervisor},
-      SymphonyElixir.WorkflowStore,
-      SymphonyElixir.Orchestrator,
-      SymphonyElixir.HttpServer,
-      SymphonyElixir.StatusDashboard
-    ]
+    case validate_required_env_vars() do
+      :ok ->
+        children = [
+          {Phoenix.PubSub, name: SymphonyElixir.PubSub},
+          {Task.Supervisor, name: SymphonyElixir.TaskSupervisor},
+          SymphonyElixir.WorkflowStore,
+          SymphonyElixir.Orchestrator,
+          SymphonyElixir.HttpServer,
+          SymphonyElixir.StatusDashboard
+        ]
 
-    Supervisor.start_link(
-      children,
-      strategy: :one_for_one,
-      name: SymphonyElixir.Supervisor
-    )
+        Supervisor.start_link(
+          children,
+          strategy: :one_for_one,
+          name: SymphonyElixir.Supervisor
+        )
+
+      {:error, message} ->
+        IO.puts(:stderr, "Startup failed: #{message}")
+        {:error, message}
+    end
+  end
+
+  defp validate_required_env_vars do
+    with :ok <- check_linear_api_key(),
+         :ok <- check_openai_api_key() do
+      :ok
+    end
+  end
+
+  defp check_linear_api_key do
+    case System.get_env("LINEAR_API_KEY") do
+      nil -> {:error, "LINEAR_API_KEY environment variable is not set"}
+      "" -> {:error, "LINEAR_API_KEY environment variable is empty"}
+      _ -> :ok
+    end
+  end
+
+  defp check_openai_api_key do
+    case System.get_env("OPENAI_API_KEY") do
+      nil -> {:error, "OPENAI_API_KEY environment variable is not set"}
+      "" -> {:error, "OPENAI_API_KEY environment variable is empty"}
+      _ -> :ok
+    end
   end
 
   @impl true
