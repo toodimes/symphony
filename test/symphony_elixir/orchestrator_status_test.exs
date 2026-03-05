@@ -1597,6 +1597,78 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     assert StatusDashboard.humanize_codex_message(fallback_reasoning) == "reasoning update"
   end
 
+  test "status dashboard humanizes claude cli stream-json payload types" do
+    assistant_blocks = %{
+      event: :notification,
+      message: %{
+        "type" => "assistant",
+        "content" => [%{"type" => "text", "text" => "Analyzing the codebase now"}]
+      }
+    }
+
+    assistant_nested_message = %{
+      event: :notification,
+      message: %{
+        "type" => "assistant",
+        "message" => %{"content" => "Working through the failing tests"}
+      }
+    }
+
+    tool_use = %{
+      event: :notification,
+      message: %{"type" => "tool_use", "name" => "Read"}
+    }
+
+    tool_result = %{
+      event: :notification,
+      message: %{"type" => "tool_result", "name" => "Bash"}
+    }
+
+    system = %{
+      event: :notification,
+      message: %{"type" => "system"}
+    }
+
+    unknown = %{
+      event: :notification,
+      message: %{"type" => "content_block_start"}
+    }
+
+    completed_result = %{
+      event: :turn_completed,
+      message: %{"type" => "result", "input_tokens" => 1_200, "output_tokens" => 350}
+    }
+
+    assert StatusDashboard.humanize_codex_message(assistant_blocks) ==
+             "assistant: Analyzing the codebase now"
+
+    assert StatusDashboard.humanize_codex_message(assistant_nested_message) ==
+             "assistant: Working through the failing tests"
+
+    assert StatusDashboard.humanize_codex_message(tool_use) == "tool use: Read"
+    assert StatusDashboard.humanize_codex_message(tool_result) == "tool result: Bash"
+    assert StatusDashboard.humanize_codex_message(system) == "system initialization"
+    assert StatusDashboard.humanize_codex_message(unknown) == "content_block_start"
+
+    assert StatusDashboard.humanize_codex_message(completed_result) ==
+             "turn completed (in 1,200, out 350)"
+  end
+
+  test "status dashboard humanizes claude cli error events and malformed updates" do
+    failed = %{
+      event: :turn_failed,
+      message: %{"type" => "error", "message" => "rate limit exceeded"}
+    }
+
+    malformed = %{
+      event: :malformed,
+      message: %{"payload" => "{not-json"}
+    }
+
+    assert StatusDashboard.humanize_codex_message(failed) == "turn failed: rate limit exceeded"
+    assert StatusDashboard.humanize_codex_message(malformed) == "malformed JSON event from agent"
+  end
+
   test "application stop renders offline status" do
     rendered =
       ExUnit.CaptureIO.capture_io(fn ->

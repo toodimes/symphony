@@ -1144,9 +1144,19 @@ defmodule SymphonyElixir.StatusDashboard do
 
   defp humanize_codex_event(:turn_ended_with_error, message, _payload), do: "turn ended with error: #{format_reason(message)}"
   defp humanize_codex_event(:startup_failed, message, _payload), do: "startup failed: #{format_reason(message)}"
-  defp humanize_codex_event(:turn_failed, _message, payload), do: humanize_codex_method("turn/failed", payload)
+
+  defp humanize_codex_event(:turn_failed, _message, payload) do
+    cli_message = map_value(payload, ["message", :message])
+
+    if is_binary(map_value(payload, ["type", :type])) and is_binary(cli_message) do
+      "turn failed: #{inline_text(cli_message)}"
+    else
+      humanize_codex_method("turn/failed", payload)
+    end
+  end
+
   defp humanize_codex_event(:turn_cancelled, _message, _payload), do: "turn cancelled"
-  defp humanize_codex_event(:malformed, _message, _payload), do: "malformed JSON event from codex"
+  defp humanize_codex_event(:malformed, _message, _payload), do: "malformed JSON event from agent"
   defp humanize_codex_event(_event, _message, _payload), do: nil
 
   defp unwrap_codex_message_payload(%{} = message) do
@@ -1167,6 +1177,9 @@ defmodule SymphonyElixir.StatusDashboard do
 
       _ ->
         cond do
+          is_binary(map_value(payload, ["type", :type])) ->
+            humanize_cli_type(map_value(payload, ["type", :type]), payload)
+
           is_binary(map_value(payload, ["session_id", :session_id])) ->
             "session started (#{map_value(payload, ["session_id", :session_id])})"
 
@@ -1197,6 +1210,66 @@ defmodule SymphonyElixir.StatusDashboard do
     |> sanitize_ansi_and_control_bytes()
     |> String.trim()
   end
+
+  defp humanize_cli_type("assistant", payload) do
+    case extract_cli_content_preview(payload) do
+      nil -> "assistant message"
+      preview -> "assistant: #{preview}"
+    end
+  end
+
+  defp humanize_cli_type("tool_use", payload) do
+    name = map_value(payload, ["name", :name])
+    if is_binary(name), do: "tool use: #{inline_text(name)}", else: "tool use"
+  end
+
+  defp humanize_cli_type("tool_result", payload) do
+    name = map_value(payload, ["name", :name]) || map_value(payload, ["tool_name", :tool_name])
+    if is_binary(name), do: "tool result: #{inline_text(name)}", else: "tool result"
+  end
+
+  defp humanize_cli_type("result", payload) do
+    case format_usage_counts(payload) do
+      nil -> "turn completed"
+      usage_text -> "turn completed (#{usage_text})"
+    end
+  end
+
+  defp humanize_cli_type("system", _payload), do: "system initialization"
+  defp humanize_cli_type(type, _payload), do: type
+
+  defp extract_cli_content_preview(payload) when is_map(payload) do
+    content =
+      map_value(payload, ["content", :content]) ||
+        map_value(payload, ["message", :message])
+
+    extract_cli_content_preview(content)
+  end
+
+  defp extract_cli_content_preview(content) when is_binary(content), do: inline_text(content)
+
+  defp extract_cli_content_preview(content) when is_list(content) do
+    text =
+      Enum.find_value(content, fn block ->
+        case block do
+          %{} = map ->
+            case map_value(map, ["text", :text]) do
+              value when is_binary(value) -> value
+              _ -> nil
+            end
+
+          value when is_binary(value) ->
+            value
+
+          _ ->
+            nil
+        end
+      end)
+
+    if is_binary(text), do: inline_text(text), else: nil
+  end
+
+  defp extract_cli_content_preview(_content), do: nil
 
   defp sanitize_ansi_and_control_bytes(value) when is_binary(value) do
     value
