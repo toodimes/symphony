@@ -56,6 +56,7 @@ defmodule SymphonyElixir.Config do
                                  team_key: [type: {:or, [:string, nil]}, default: nil],
                                  assignee: [type: {:or, [:string, nil]}, default: nil],
                                  labels: [type: {:list, :string}, default: []],
+                                 dispatch_states: [type: {:list, :string}, default: []],
                                  active_states: [
                                    type: {:list, :string},
                                    default: @default_active_states
@@ -219,6 +220,11 @@ defmodule SymphonyElixir.Config do
   @spec linear_labels() :: [String.t()]
   def linear_labels do
     get_in(validated_workflow_options(), [:tracker, :labels])
+  end
+
+  @spec linear_dispatch_states() :: [String.t()]
+  def linear_dispatch_states do
+    get_in(validated_workflow_options(), [:tracker, :dispatch_states])
   end
 
   @spec linear_active_states() :: [String.t()]
@@ -477,6 +483,7 @@ defmodule SymphonyElixir.Config do
     |> put_if_present(:project_slug, scalar_string_value(Map.get(section, "project_slug")))
     |> put_if_present(:team_key, scalar_string_value(Map.get(section, "team_key")))
     |> put_if_present(:labels, csv_value(Map.get(section, "labels")))
+    |> put_if_present(:dispatch_states, csv_value(Map.get(section, "dispatch_states")))
     |> put_if_present(:active_states, csv_value(Map.get(section, "active_states")))
     |> put_if_present(:terminal_states, csv_value(Map.get(section, "terminal_states")))
   end
