@@ -47,9 +47,12 @@ defmodule SymphonyElixir.Application do
   end
 
   defp validate_required_env_vars do
-    with :ok <- check_linear_api_key(),
-         :ok <- check_openai_api_key() do
+    if Mix.env() == :test do
       :ok
+    else
+      with :ok <- check_linear_api_key() do
+        check_openai_api_key()
+      end
     end
   end
 
