@@ -1,18 +1,12 @@
 ---
 tracker:
   kind: linear
-  project_slug: "symphony-0c79b11b75ea"
-  active_states:
-    - Todo
-    - In Progress
-    - Merging
-    - Rework
-  terminal_states:
-    - Closed
-    - Cancelled
-    - Canceled
-    - Duplicate
-    - Done
+  team_key: "RVR"
+  labels: ["symphony"]
+  assignee: "me"
+  active_states: ["Todo", "In Progress", "Code Review", "On Staging"]
+  terminal_states: ["Done", "Canceled"]
+  
 polling:
   interval_ms: 5000
 workspace:
@@ -26,8 +20,12 @@ hooks:
   before_remove: |
     cd elixir && mise exec -- mix workspace.before_remove
 agent:
+  backend: claude
   max_concurrent_agents: 10
   max_turns: 20
+claude:
+  command: claude
+  permission_mode: bypassPermissions
 codex:
   command: codex --config shell_environment_policy.inherit=all --config model_reasoning_effort=xhigh --model gpt-5.3-codex app-server
   approval_policy: never

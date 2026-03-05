@@ -9,9 +9,54 @@ defmodule SymphonyElixir.Linear.Client do
   @issue_page_size 50
   @max_error_body_log_bytes 1_000
 
-  @query """
-  query SymphonyLinearPoll($projectSlug: String!, $stateNames: [String!]!, $first: Int!, $relationFirst: Int!, $after: String) {
+  @query_by_project """
+  query SymphonyLinearPollByProject($projectSlug: String!, $stateNames: [String!]!, $first: Int!, $relationFirst: Int!, $after: String) {
     issues(filter: {project: {slugId: {eq: $projectSlug}}, state: {name: {in: $stateNames}}}, first: $first, after: $after) {
+      nodes {
+        id
+        identifier
+        title
+        description
+        priority
+        state {
+          name
+        }
+        branchName
+        url
+        assignee {
+          id
+        }
+        labels {
+          nodes {
+            name
+          }
+        }
+        inverseRelations(first: $relationFirst) {
+          nodes {
+            type
+            issue {
+              id
+              identifier
+              state {
+                name
+              }
+            }
+          }
+        }
+        createdAt
+        updatedAt
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+  """
+
+  @query_by_team """
+  query SymphonyLinearPollByTeam($teamKey: String!, $stateNames: [String!]!, $first: Int!, $relationFirst: Int!, $after: String) {
+    issues(filter: {team: {key: {eq: $teamKey}}, state: {name: {in: $stateNames}}}, first: $first, after: $after) {
       nodes {
         id
         identifier
@@ -106,17 +151,18 @@ defmodule SymphonyElixir.Linear.Client do
   @spec fetch_candidate_issues() :: {:ok, [Issue.t()]} | {:error, term()}
   def fetch_candidate_issues do
     project_slug = Config.linear_project_slug()
+    team_key = Config.linear_team_key()
 
     cond do
       is_nil(Config.linear_api_token()) ->
         {:error, :missing_linear_api_token}
 
-      is_nil(project_slug) ->
-        {:error, :missing_linear_project_slug}
+      !target_configured?(project_slug, team_key) ->
+        {:error, :missing_linear_project_or_team_key}
 
       true ->
         with {:ok, assignee_filter} <- routing_assignee_filter() do
-          do_fetch_by_states(project_slug, Config.linear_active_states(), assignee_filter)
+          do_fetch_by_states(project_slug, team_key, Config.linear_active_states(), assignee_filter)
         end
     end
   end
@@ -129,16 +175,17 @@ defmodule SymphonyElixir.Linear.Client do
       {:ok, []}
     else
       project_slug = Config.linear_project_slug()
+      team_key = Config.linear_team_key()
 
       cond do
         is_nil(Config.linear_api_token()) ->
           {:error, :missing_linear_api_token}
 
-        is_nil(project_slug) ->
-          {:error, :missing_linear_project_slug}
+        !target_configured?(project_slug, team_key) ->
+          {:error, :missing_linear_project_or_team_key}
 
         true ->
-          do_fetch_by_states(project_slug, normalized_states, nil)
+          do_fetch_by_states(project_slug, team_key, normalized_states, nil)
       end
     end
   end
@@ -218,13 +265,22 @@ defmodule SymphonyElixir.Linear.Client do
     |> finalize_paginated_issues()
   end
 
-  defp do_fetch_by_states(project_slug, state_names, assignee_filter) do
-    do_fetch_by_states_page(project_slug, state_names, assignee_filter, nil, [])
+  defp do_fetch_by_states(project_slug, team_key, state_names, assignee_filter) do
+    cond do
+      present_tracker_target?(team_key) ->
+        do_fetch_by_team_states_page(team_key, state_names, assignee_filter, nil, [])
+
+      present_tracker_target?(project_slug) ->
+        do_fetch_by_project_states_page(project_slug, state_names, assignee_filter, nil, [])
+
+      true ->
+        {:error, :missing_linear_project_or_team_key}
+    end
   end
 
-  defp do_fetch_by_states_page(project_slug, state_names, assignee_filter, after_cursor, acc_issues) do
+  defp do_fetch_by_project_states_page(project_slug, state_names, assignee_filter, after_cursor, acc_issues) do
     with {:ok, body} <-
-           graphql(@query, %{
+           graphql(@query_by_project, %{
              projectSlug: project_slug,
              stateNames: state_names,
              first: @issue_page_size,
@@ -236,7 +292,13 @@ defmodule SymphonyElixir.Linear.Client do
 
       case next_page_cursor(page_info) do
         {:ok, next_cursor} ->
-          do_fetch_by_states_page(project_slug, state_names, assignee_filter, next_cursor, updated_acc)
+          do_fetch_by_project_states_page(
+            project_slug,
+            state_names,
+            assignee_filter,
+            next_cursor,
+            updated_acc
+          )
 
         :done ->
           {:ok, finalize_paginated_issues(updated_acc)}
@@ -246,6 +308,47 @@ defmodule SymphonyElixir.Linear.Client do
       end
     end
   end
+
+  defp do_fetch_by_team_states_page(team_key, state_names, assignee_filter, after_cursor, acc_issues) do
+    with {:ok, body} <-
+           graphql(@query_by_team, %{
+             teamKey: team_key,
+             stateNames: state_names,
+             first: @issue_page_size,
+             relationFirst: @issue_page_size,
+             after: after_cursor
+           }),
+         {:ok, issues, page_info} <- decode_linear_page_response(body, assignee_filter) do
+      updated_acc = prepend_page_issues(issues, acc_issues)
+
+      case next_page_cursor(page_info) do
+        {:ok, next_cursor} ->
+          do_fetch_by_team_states_page(
+            team_key,
+            state_names,
+            assignee_filter,
+            next_cursor,
+            updated_acc
+          )
+
+        :done ->
+          {:ok, finalize_paginated_issues(updated_acc)}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
+
+  defp target_configured?(project_slug, team_key) do
+    present_tracker_target?(project_slug) or present_tracker_target?(team_key)
+  end
+
+  defp present_tracker_target?(value) when is_binary(value) do
+    String.trim(value) != ""
+  end
+
+  defp present_tracker_target?(_value), do: false
 
   defp prepend_page_issues(issues, acc_issues) when is_list(issues) and is_list(acc_issues) do
     Enum.reverse(issues, acc_issues)

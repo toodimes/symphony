@@ -37,7 +37,7 @@ defmodule SymphonyElixir.CoreTest do
       tracker_project_slug: nil
     )
 
-    assert {:error, :missing_linear_project_slug} = Config.validate!()
+    assert {:error, :missing_linear_project_or_team_key} = Config.validate!()
 
     write_workflow_file!(Workflow.workflow_file_path(),
       tracker_project_slug: "project",
@@ -82,7 +82,7 @@ defmodule SymphonyElixir.CoreTest do
     tracker = Map.get(config, "tracker", %{})
     assert is_map(tracker)
     assert Map.get(tracker, "kind") == "linear"
-    assert is_binary(Map.get(tracker, "project_slug"))
+    assert is_binary(Map.get(tracker, "project_slug")) or is_binary(Map.get(tracker, "team_key"))
     assert is_list(Map.get(tracker, "active_states"))
     assert is_list(Map.get(tracker, "terminal_states"))
 
@@ -944,6 +944,70 @@ defmodule SymphonyElixir.CoreTest do
                      500
 
       assert session_id == "thread-live-turn-live"
+    after
+      File.rm_rf(test_root)
+    end
+  end
+
+  test "agent runner can execute turns with claude backend" do
+    test_root =
+      Path.join(
+        System.tmp_dir!(),
+        "symphony-elixir-agent-runner-claude-#{System.unique_integer([:positive])}"
+      )
+
+    try do
+      workspace_root = Path.join(test_root, "workspaces")
+      claude_binary = Path.join(test_root, "fake-claude")
+      trace_file = Path.join(test_root, "claude.trace")
+
+      File.mkdir_p!(workspace_root)
+
+      File.write!(claude_binary, """
+      #!/bin/sh
+      trace_file="${SYMP_TEST_CLAUDE_TRACE:-/tmp/claude.trace}"
+      printf 'ARGV:%s\\n' "$*" >> "$trace_file"
+      printf '%s\\n' '{"type":"assistant","message":{"content":"working"}}'
+      printf '%s\\n' '{"type":"result","input_tokens":3,"output_tokens":2,"cost_usd":0.01}'
+      """)
+
+      File.chmod!(claude_binary, 0o755)
+      System.put_env("SYMP_TEST_CLAUDE_TRACE", trace_file)
+      on_exit(fn -> System.delete_env("SYMP_TEST_CLAUDE_TRACE") end)
+
+      write_workflow_file!(Workflow.workflow_file_path(),
+        workspace_root: workspace_root,
+        agent_backend: "claude",
+        claude_command: claude_binary,
+        claude_permission_mode: "bypassPermissions"
+      )
+
+      issue = %Issue{
+        id: "issue-claude-runner",
+        identifier: "MT-CLAUDE-RUN",
+        title: "Claude backend",
+        description: "run through agent runner",
+        state: "In Progress",
+        url: "https://example.org/issues/MT-CLAUDE-RUN",
+        labels: []
+      }
+
+      assert :ok =
+               AgentRunner.run(
+                 issue,
+                 self(),
+                 issue_state_fetcher: fn [_issue_id] -> {:ok, [%{issue | state: "Done"}]} end
+               )
+
+      assert_receive {:codex_worker_update, "issue-claude-runner", %{event: :session_started, session_id: session_id}},
+                     500
+
+      assert String.ends_with?(session_id, "-turn-1")
+
+      trace = File.read!(trace_file)
+      assert trace =~ "--output-format stream-json"
+      assert trace =~ "--session-id"
+      refute trace =~ "app-server"
     after
       File.rm_rf(test_root)
     end

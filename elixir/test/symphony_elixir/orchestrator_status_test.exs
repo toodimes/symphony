@@ -959,6 +959,62 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     assert remaining_ms <= 10_500
   end
 
+  test "orchestrator uses claude stall timeout when claude backend is selected" do
+    write_workflow_file!(Workflow.workflow_file_path(),
+      tracker_api_token: nil,
+      agent_backend: "claude",
+      claude_permission_mode: "bypassPermissions",
+      codex_stall_timeout_ms: 600_000,
+      claude_stall_timeout_ms: 1_000
+    )
+
+    issue_id = "issue-claude-stall"
+    orchestrator_name = Module.concat(__MODULE__, :ClaudeStallOrchestrator)
+    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name)
+
+    on_exit(fn ->
+      if Process.alive?(pid) do
+        Process.exit(pid, :normal)
+      end
+    end)
+
+    worker_pid =
+      spawn(fn ->
+        receive do
+          :done -> :ok
+        end
+      end)
+
+    stale_activity_at = DateTime.add(DateTime.utc_now(), -5, :second)
+    initial_state = :sys.get_state(pid)
+
+    running_entry = %{
+      pid: worker_pid,
+      ref: make_ref(),
+      identifier: "MT-CLAUDE-STALL",
+      issue: %Issue{id: issue_id, identifier: "MT-CLAUDE-STALL", state: "In Progress"},
+      session_id: "claude-session-turn-1",
+      last_codex_message: nil,
+      last_codex_timestamp: stale_activity_at,
+      last_codex_event: :notification,
+      started_at: stale_activity_at
+    }
+
+    :sys.replace_state(pid, fn _ ->
+      initial_state
+      |> Map.put(:running, %{issue_id => running_entry})
+      |> Map.put(:claimed, MapSet.put(initial_state.claimed, issue_id))
+    end)
+
+    send(pid, :tick)
+    Process.sleep(100)
+    state = :sys.get_state(pid)
+
+    refute Process.alive?(worker_pid)
+    refute Map.has_key?(state.running, issue_id)
+    assert state.retry_attempts[issue_id].error =~ "stalled for "
+  end
+
   test "status dashboard renders offline marker to terminal" do
     rendered =
       ExUnit.CaptureIO.capture_io(fn ->
@@ -982,7 +1038,8 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     rendered = StatusDashboard.format_snapshot_content_for_test(snapshot_data, 0.0)
 
     assert rendered =~ "https://linear.app/project/project/issues"
-    refute rendered =~ "Dashboard:"
+    assert rendered =~ "Dashboard:"
+    assert rendered =~ "http://127.0.0.1:4020/"
   end
 
   test "status dashboard renders dashboard url on its own line when server port is configured" do

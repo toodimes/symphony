@@ -743,7 +743,7 @@ defmodule SymphonyElixir.WorkspaceAndConfigTest do
     assert Config.observability_enabled?()
     assert Config.observability_refresh_ms() == 1_000
     assert Config.observability_render_interval_ms() == 16
-    assert Config.server_port() == nil
+    assert Config.server_port() == 4020
     assert Config.server_host() == "123"
 
     write_workflow_file!(Workflow.workflow_file_path(), codex_approval_policy: "")
@@ -797,6 +797,44 @@ defmodule SymphonyElixir.WorkspaceAndConfigTest do
 
     write_workflow_file!(Workflow.workflow_file_path(), codex_command: "codex app-server")
     assert Config.codex_command() == "codex app-server"
+  end
+
+  test "config supports selecting the claude backend" do
+    write_workflow_file!(Workflow.workflow_file_path(),
+      agent_backend: "claude",
+      claude_command: "claude",
+      claude_model: "claude-sonnet-4-20250514",
+      claude_permission_mode: "bypassPermissions",
+      claude_mcp_config: "tmp/mcp.json",
+      claude_turn_timeout_ms: 123_000,
+      claude_stall_timeout_ms: 45_000
+    )
+
+    assert Config.agent_backend() == "claude"
+    assert Config.claude_command() == "claude"
+    assert Config.claude_model() == "claude-sonnet-4-20250514"
+    assert Config.claude_permission_mode() == "bypassPermissions"
+    assert Config.claude_mcp_config() == Path.expand("tmp/mcp.json")
+    assert Config.claude_turn_timeout_ms() == 123_000
+    assert Config.claude_stall_timeout_ms() == 45_000
+    assert Config.agent_stall_timeout_ms() == 45_000
+    assert :ok = Config.validate!()
+  end
+
+  test "config enforces claude permission mode when claude backend is selected" do
+    write_workflow_file!(Workflow.workflow_file_path(),
+      agent_backend: "claude",
+      claude_permission_mode: nil
+    )
+
+    assert {:error, :missing_claude_permission_mode} = Config.validate!()
+
+    write_workflow_file!(Workflow.workflow_file_path(),
+      agent_backend: "claude",
+      claude_permission_mode: "interactive"
+    )
+
+    assert {:error, {:invalid_claude_permission_mode, "interactive"}} = Config.validate!()
   end
 
   test "config resolves $VAR references for env-backed secret and path values" do

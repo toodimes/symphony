@@ -4,9 +4,12 @@ defmodule SymphonyElixir.CLI do
   """
 
   alias SymphonyElixir.LogFile
+  alias SymphonyElixir.Workflow
+  alias SymphonyElixir.Claude.McpServer
 
   @acknowledgement_switch :i_understand_that_this_will_be_running_without_the_usual_guardrails
   @switches [{@acknowledgement_switch, :boolean}, logs_root: :string, port: :integer]
+  @mcp_switches [workflow: :string]
 
   @type ensure_started_result :: {:ok, [atom()]} | {:error, term()}
   @type deps :: %{
@@ -14,7 +17,8 @@ defmodule SymphonyElixir.CLI do
           set_workflow_file_path: (String.t() -> :ok | {:error, term()}),
           set_logs_root: (String.t() -> :ok | {:error, term()}),
           set_server_port_override: (non_neg_integer() | nil -> :ok | {:error, term()}),
-          ensure_all_started: (-> ensure_started_result())
+          ensure_all_started: (-> ensure_started_result()),
+          run_mcp_server: (String.t() -> :ok | {:error, String.t()})
         }
 
   @spec main([String.t()]) :: no_return()
@@ -29,8 +33,15 @@ defmodule SymphonyElixir.CLI do
     end
   end
 
+  @spec evaluate([String.t()]) :: :ok | {:error, String.t()}
+  def evaluate(args), do: evaluate(args, runtime_deps())
+
   @spec evaluate([String.t()], deps()) :: :ok | {:error, String.t()}
-  def evaluate(args, deps \\ runtime_deps()) do
+  def evaluate(["mcp-server" | args], deps) do
+    evaluate_mcp_server(args, deps)
+  end
+
+  def evaluate(args, deps) do
     case OptionParser.parse(args, strict: @switches) do
       {opts, [], []} ->
         with :ok <- require_guardrails_acknowledgement(opts),
@@ -75,6 +86,11 @@ defmodule SymphonyElixir.CLI do
     "Usage: symphony [--logs-root <path>] [--port <port>] [path-to-WORKFLOW.md]"
   end
 
+  @spec mcp_usage_message() :: String.t()
+  defp mcp_usage_message do
+    "Usage: symphony mcp-server [--workflow <path-to-WORKFLOW.md>]"
+  end
+
   @spec runtime_deps() :: deps()
   defp runtime_deps do
     %{
@@ -82,7 +98,8 @@ defmodule SymphonyElixir.CLI do
       set_workflow_file_path: &SymphonyElixir.Workflow.set_workflow_file_path/1,
       set_logs_root: &set_logs_root/1,
       set_server_port_override: &set_server_port_override/1,
-      ensure_all_started: fn -> Application.ensure_all_started(:symphony_elixir) end
+      ensure_all_started: fn -> Application.ensure_all_started(:symphony_elixir) end,
+      run_mcp_server: &run_mcp_server/1
     }
   end
 
@@ -167,6 +184,39 @@ defmodule SymphonyElixir.CLI do
   defp set_server_port_override(port) when is_integer(port) and port >= 0 do
     Application.put_env(:symphony_elixir, :server_port_override, port)
     :ok
+  end
+
+  defp evaluate_mcp_server(args, deps) do
+    case OptionParser.parse(args, strict: @mcp_switches) do
+      {opts, [], []} ->
+        workflow_path =
+          case Keyword.get_values(opts, :workflow) do
+            [] -> Path.expand("WORKFLOW.md")
+            values -> values |> List.last() |> Path.expand()
+          end
+
+        if deps.file_regular?.(workflow_path) do
+          run_mcp = Map.get(deps, :run_mcp_server, &run_mcp_server/1)
+          run_mcp.(workflow_path)
+        else
+          {:error, "Workflow file not found: #{workflow_path}"}
+        end
+
+      _ ->
+        {:error, mcp_usage_message()}
+    end
+  end
+
+  defp run_mcp_server(workflow_path) when is_binary(workflow_path) do
+    :ok = Workflow.set_workflow_file_path(workflow_path)
+
+    case Application.ensure_all_started(:req) do
+      {:ok, _started_apps} ->
+        McpServer.run()
+
+      {:error, reason} ->
+        {:error, "Failed to start MCP server dependencies: #{inspect(reason)}"}
+    end
   end
 
   @spec wait_for_shutdown() :: no_return()

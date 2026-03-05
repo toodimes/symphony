@@ -101,6 +101,7 @@ defmodule SymphonyElixir.TestSupport do
           tracker_terminal_states: ["Closed", "Cancelled", "Canceled", "Duplicate", "Done"],
           poll_interval_ms: 30_000,
           workspace_root: Path.join(System.tmp_dir!(), "symphony_workspaces"),
+          agent_backend: "codex",
           max_concurrent_agents: 10,
           max_turns: 20,
           max_retry_backoff_ms: 300_000,
@@ -112,6 +113,12 @@ defmodule SymphonyElixir.TestSupport do
           codex_turn_timeout_ms: 3_600_000,
           codex_read_timeout_ms: 5_000,
           codex_stall_timeout_ms: 300_000,
+          claude_command: "claude",
+          claude_model: "claude-sonnet-4-20250514",
+          claude_permission_mode: nil,
+          claude_mcp_config: nil,
+          claude_turn_timeout_ms: 3_600_000,
+          claude_stall_timeout_ms: 300_000,
           hook_after_create: nil,
           hook_before_run: nil,
           hook_after_run: nil,
@@ -120,7 +127,7 @@ defmodule SymphonyElixir.TestSupport do
           observability_enabled: true,
           observability_refresh_ms: 1_000,
           observability_render_interval_ms: 16,
-          server_port: nil,
+          server_port: 4020,
           server_host: nil,
           prompt: @workflow_prompt
         ],
@@ -136,6 +143,7 @@ defmodule SymphonyElixir.TestSupport do
     tracker_terminal_states = Keyword.get(config, :tracker_terminal_states)
     poll_interval_ms = Keyword.get(config, :poll_interval_ms)
     workspace_root = Keyword.get(config, :workspace_root)
+    agent_backend = Keyword.get(config, :agent_backend)
     max_concurrent_agents = Keyword.get(config, :max_concurrent_agents)
     max_turns = Keyword.get(config, :max_turns)
     max_retry_backoff_ms = Keyword.get(config, :max_retry_backoff_ms)
@@ -147,6 +155,12 @@ defmodule SymphonyElixir.TestSupport do
     codex_turn_timeout_ms = Keyword.get(config, :codex_turn_timeout_ms)
     codex_read_timeout_ms = Keyword.get(config, :codex_read_timeout_ms)
     codex_stall_timeout_ms = Keyword.get(config, :codex_stall_timeout_ms)
+    claude_command = Keyword.get(config, :claude_command)
+    claude_model = Keyword.get(config, :claude_model)
+    claude_permission_mode = Keyword.get(config, :claude_permission_mode)
+    claude_mcp_config = Keyword.get(config, :claude_mcp_config)
+    claude_turn_timeout_ms = Keyword.get(config, :claude_turn_timeout_ms)
+    claude_stall_timeout_ms = Keyword.get(config, :claude_stall_timeout_ms)
     hook_after_create = Keyword.get(config, :hook_after_create)
     hook_before_run = Keyword.get(config, :hook_before_run)
     hook_after_run = Keyword.get(config, :hook_after_run)
@@ -175,6 +189,7 @@ defmodule SymphonyElixir.TestSupport do
         "workspace:",
         "  root: #{yaml_value(workspace_root)}",
         "agent:",
+        "  backend: #{yaml_value(agent_backend)}",
         "  max_concurrent_agents: #{yaml_value(max_concurrent_agents)}",
         "  max_turns: #{yaml_value(max_turns)}",
         "  max_retry_backoff_ms: #{yaml_value(max_retry_backoff_ms)}",
@@ -187,6 +202,14 @@ defmodule SymphonyElixir.TestSupport do
         "  turn_timeout_ms: #{yaml_value(codex_turn_timeout_ms)}",
         "  read_timeout_ms: #{yaml_value(codex_read_timeout_ms)}",
         "  stall_timeout_ms: #{yaml_value(codex_stall_timeout_ms)}",
+        claude_yaml(
+          claude_command,
+          claude_model,
+          claude_permission_mode,
+          claude_mcp_config,
+          claude_turn_timeout_ms,
+          claude_stall_timeout_ms
+        ),
         hooks_yaml(hook_after_create, hook_before_run, hook_after_run, hook_before_remove, hook_timeout_ms),
         observability_yaml(observability_enabled, observability_refresh_ms, observability_render_interval_ms),
         server_yaml(server_port, server_host),
@@ -232,6 +255,19 @@ defmodule SymphonyElixir.TestSupport do
       hook_entry("before_remove", hook_before_remove)
     ]
     |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n")
+  end
+
+  defp claude_yaml(command, model, permission_mode, mcp_config, turn_timeout_ms, stall_timeout_ms) do
+    [
+      "claude:",
+      "  command: #{yaml_value(command)}",
+      "  model: #{yaml_value(model)}",
+      "  permission_mode: #{yaml_value(permission_mode)}",
+      "  mcp_config: #{yaml_value(mcp_config)}",
+      "  turn_timeout_ms: #{yaml_value(turn_timeout_ms)}",
+      "  stall_timeout_ms: #{yaml_value(stall_timeout_ms)}"
+    ]
     |> Enum.join("\n")
   end
 

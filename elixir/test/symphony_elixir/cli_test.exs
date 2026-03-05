@@ -136,4 +136,24 @@ defmodule SymphonyElixir.CLITest do
 
     assert :ok = CLI.evaluate([@ack_flag, "WORKFLOW.md"], deps)
   end
+
+  test "supports mcp-server subcommand without guardrails acknowledgement" do
+    parent = self()
+    workflow_path = Path.expand("tmp/mcp-workflow.md")
+
+    deps = %{
+      file_regular?: fn _path -> true end,
+      set_workflow_file_path: fn _path -> :ok end,
+      set_logs_root: fn _path -> :ok end,
+      set_server_port_override: fn _port -> :ok end,
+      ensure_all_started: fn -> {:ok, [:symphony_elixir]} end,
+      run_mcp_server: fn path ->
+        send(parent, {:mcp_server_started, path})
+        :ok
+      end
+    }
+
+    assert :ok = CLI.evaluate(["mcp-server", "--workflow", workflow_path], deps)
+    assert_received {:mcp_server_started, ^workflow_path}
+  end
 end

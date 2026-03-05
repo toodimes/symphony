@@ -186,6 +186,10 @@ defmodule SymphonyElixir.Orchestrator do
         Logger.error("Linear project slug missing in WORKFLOW.md")
         state
 
+      {:error, :missing_linear_project_or_team_key} ->
+        Logger.error("Linear tracker target missing in WORKFLOW.md (set tracker.project_slug or tracker.team_key)")
+        state
+
       {:error, :missing_tracker_kind} ->
         Logger.error("Tracker kind missing in WORKFLOW.md")
 
@@ -210,6 +214,18 @@ defmodule SymphonyElixir.Orchestrator do
 
       {:error, {:invalid_codex_turn_sandbox_policy, reason}} ->
         Logger.error("Invalid codex.turn_sandbox_policy in WORKFLOW.md: #{inspect(reason)}")
+        state
+
+      {:error, :missing_claude_command} ->
+        Logger.error("Claude command missing in WORKFLOW.md")
+        state
+
+      {:error, :missing_claude_permission_mode} ->
+        Logger.error("Claude permission_mode missing in WORKFLOW.md")
+        state
+
+      {:error, {:invalid_claude_permission_mode, value}} ->
+        Logger.error("Invalid claude.permission_mode in WORKFLOW.md: #{inspect(value)}")
         state
 
       {:error, {:missing_workflow_file, path, reason}} ->
@@ -270,7 +286,7 @@ defmodule SymphonyElixir.Orchestrator do
   @doc false
   @spec should_dispatch_issue_for_test(Issue.t(), term()) :: boolean()
   def should_dispatch_issue_for_test(%Issue{} = issue, %State{} = state) do
-    should_dispatch_issue?(issue, state, active_state_set(), terminal_state_set())
+    should_dispatch_issue?(issue, state, active_state_set(), terminal_state_set(), label_filter_set())
   end
 
   @doc false
@@ -365,7 +381,7 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   defp reconcile_stalled_running_issues(%State{} = state) do
-    timeout_ms = Config.codex_stall_timeout_ms()
+    timeout_ms = Config.agent_stall_timeout_ms()
 
     cond do
       timeout_ms <= 0 ->
@@ -398,7 +414,7 @@ defmodule SymphonyElixir.Orchestrator do
       |> terminate_running_issue(issue_id, false)
       |> schedule_issue_retry(issue_id, next_attempt, %{
         identifier: identifier,
-        error: "stalled for #{elapsed_ms}ms without codex activity"
+        error: "stalled for #{elapsed_ms}ms without agent activity"
       })
     else
       state
@@ -438,11 +454,12 @@ defmodule SymphonyElixir.Orchestrator do
   defp choose_issues(issues, state) do
     active_states = active_state_set()
     terminal_states = terminal_state_set()
+    label_filter = label_filter_set()
 
     issues
     |> sort_issues_for_dispatch()
     |> Enum.reduce(state, fn issue, state_acc ->
-      if should_dispatch_issue?(issue, state_acc, active_states, terminal_states) do
+      if should_dispatch_issue?(issue, state_acc, active_states, terminal_states, label_filter) do
         dispatch_issue(state_acc, issue)
       else
         state_acc
@@ -474,9 +491,11 @@ defmodule SymphonyElixir.Orchestrator do
          %Issue{} = issue,
          %State{running: running, claimed: claimed} = state,
          active_states,
-         terminal_states
+         terminal_states,
+         label_filter
        ) do
     candidate_issue?(issue, active_states, terminal_states) and
+      issue_matches_label_filter?(issue, label_filter) and
       !todo_issue_blocked_by_non_terminal?(issue, terminal_states) and
       !MapSet.member?(claimed, issue.id) and
       !Map.has_key?(running, issue.id) and
@@ -484,7 +503,8 @@ defmodule SymphonyElixir.Orchestrator do
       state_slots_available?(issue, running)
   end
 
-  defp should_dispatch_issue?(_issue, _state, _active_states, _terminal_states), do: false
+  defp should_dispatch_issue?(_issue, _state, _active_states, _terminal_states, _label_filter),
+    do: false
 
   defp state_slots_available?(%Issue{state: issue_state}, running) when is_map(running) do
     limit = Config.max_concurrent_agents_for_state(issue_state)
@@ -557,9 +577,31 @@ defmodule SymphonyElixir.Orchestrator do
     MapSet.member?(active_states, normalize_issue_state(state_name))
   end
 
+  defp issue_matches_label_filter?(%Issue{labels: issue_labels}, label_filter)
+       when is_list(issue_labels) and is_struct(label_filter, MapSet) do
+    if MapSet.size(label_filter) == 0 do
+      true
+    else
+      issue_labels
+      |> Enum.map(&normalize_issue_label/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.any?(&MapSet.member?(label_filter, &1))
+    end
+  end
+
+  defp issue_matches_label_filter?(_issue, label_filter)
+       when is_struct(label_filter, MapSet),
+       do: MapSet.size(label_filter) == 0
+
   defp normalize_issue_state(state_name) when is_binary(state_name) do
     String.downcase(String.trim(state_name))
   end
+
+  defp normalize_issue_label(label_name) when is_binary(label_name) do
+    String.downcase(String.trim(label_name))
+  end
+
+  defp normalize_issue_label(_label_name), do: ""
 
   defp terminal_state_set do
     Config.linear_terminal_states()
@@ -571,6 +613,13 @@ defmodule SymphonyElixir.Orchestrator do
   defp active_state_set do
     Config.linear_active_states()
     |> Enum.map(&normalize_issue_state/1)
+    |> Enum.filter(&(&1 != ""))
+    |> MapSet.new()
+  end
+
+  defp label_filter_set do
+    Config.linear_labels()
+    |> Enum.map(&normalize_issue_label/1)
     |> Enum.filter(&(&1 != ""))
     |> MapSet.new()
   end

@@ -15,13 +15,14 @@ This directory contains the current Elixir/OTP implementation of Symphony, based
 
 1. Polls Linear for candidate work
 2. Creates an isolated workspace per issue
-3. Launches Codex in [App Server mode](https://developers.openai.com/codex/app-server/) inside the
-   workspace
-4. Sends a workflow prompt to Codex
-5. Keeps Codex working on the issue until the work is done
+3. Launches the configured agent backend inside the workspace:
+   - Codex in [App Server mode](https://developers.openai.com/codex/app-server/), or
+   - Claude Code CLI in `stream-json` mode with MCP tool integration
+4. Sends a workflow prompt to the backend
+5. Keeps the backend working on the issue until the work is done
 
-During app-server sessions, Symphony also serves a client-side `linear_graphql` tool so that repo
-skills can make raw Linear GraphQL calls.
+During agent sessions, Symphony also serves a `linear_graphql` tool (Codex DynamicTools or Claude
+MCP) so that repo skills can make raw Linear GraphQL calls.
 
 If a claimed issue moves to a terminal state (`Done`, `Closed`, `Cancelled`, or `Duplicate`),
 Symphony stops the active agent for that issue and cleans up matching workspaces.
@@ -34,8 +35,8 @@ Symphony stops the active agent for that issue and cleans up matching workspaces
    set it as the `LINEAR_API_KEY` environment variable.
 3. Copy this directory's `WORKFLOW.md` to your repo.
 4. Optionally copy the `commit`, `push`, `pull`, `land`, and `linear` skills to your repo.
-   - The `linear` skill expects Symphony's `linear_graphql` app-server tool for raw Linear GraphQL
-     operations such as comment editing or upload flows.
+   - The `linear` skill expects Symphony's `linear_graphql` tool (Codex DynamicTool or Claude MCP)
+     for raw Linear GraphQL operations such as comment editing or upload flows.
 5. Customize the copied `WORKFLOW.md` file for your project.
    - To get your project's slug, right-click the project and copy its URL. The slug is part of the
      URL.
@@ -78,10 +79,10 @@ If no path is passed, Symphony defaults to `./WORKFLOW.md`.
 Optional flags:
 
 - `--logs-root` tells Symphony to write logs under a different directory (default: `./log`)
-- `--port` also starts the Phoenix observability service (default: disabled)
+- `--port` overrides the Phoenix observability service port (default: `4020`)
 
 The `WORKFLOW.md` file uses YAML front matter for configuration, plus a Markdown body used as the
-Codex session prompt.
+agent session prompt.
 
 Minimal example:
 
@@ -96,10 +97,14 @@ hooks:
   after_create: |
     git clone git@github.com:your-org/your-repo.git .
 agent:
+  backend: codex
   max_concurrent_agents: 10
   max_turns: 20
 codex:
   command: codex app-server
+claude:
+  command: claude
+  permission_mode: bypass_permissions
 ---
 
 You are working on a Linear issue {{ issue.identifier }}.
@@ -110,10 +115,13 @@ Title: {{ issue.title }} Body: {{ issue.description }}
 Notes:
 
 - If a value is missing, defaults are used.
+- `agent.backend` selects runtime: `codex` (default) or `claude`.
 - Safer Codex defaults are used when policy fields are omitted:
   - `codex.approval_policy` defaults to `{"reject":{"sandbox_approval":true,"rules":true,"mcp_elicitations":true}}`
   - `codex.thread_sandbox` defaults to `workspace-write`
   - `codex.turn_sandbox_policy` defaults to a `workspaceWrite` policy rooted at the current issue workspace
+- When `agent.backend: claude`, `claude.permission_mode` is required and must be a non-interactive mode (`bypass_permissions` or `plan`).
+- Claude runs one process per turn and resumes context via a generated session id (`--session-id` / `--resume`).
 - Supported `codex.approval_policy` values depend on the targeted Codex app-server version. In the current local Codex schema, string values include `untrusted`, `on-failure`, `on-request`, and `never`, and object-form `reject` is also supported.
 - Supported `codex.thread_sandbox` values: `read-only`, `workspace-write`, `danger-full-access`.
 - Supported `codex.turn_sandbox_policy.type` values: `dangerFullAccess`, `readOnly`,
@@ -142,10 +150,15 @@ hooks:
     git clone --depth 1 "$SOURCE_REPO_URL" .
 codex:
   command: "$CODEX_BIN app-server --model gpt-5.3-codex"
+agent:
+  backend: claude
+claude:
+  command: "$CLAUDE_BIN"
+  permission_mode: bypass_permissions
 ```
 
 - If `WORKFLOW.md` is missing or has invalid YAML, startup and scheduling are halted until fixed.
-- `server.port` or CLI `--port` enables the optional Phoenix LiveView dashboard and JSON API at
+- `server.port` (default: `4020`) or CLI `--port` configures the Phoenix LiveView dashboard and JSON API at
   `/`, `/api/v1/state`, `/api/v1/<issue_identifier>`, and `/api/v1/refresh`.
 
 ## Web dashboard
