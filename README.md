@@ -150,6 +150,8 @@ codex:
 - If `WORKFLOW.md` is missing or has invalid YAML, startup and scheduling are halted until fixed.
 - `server.port` or CLI `--port` enables the optional Phoenix LiveView dashboard and JSON API at
   `/`, `/api/v1/state`, `/api/v1/<issue_identifier>`, and `/api/v1/refresh`.
+- The `SYMPHONY_SERVER_PORT` environment variable can also set the server port. Priority order:
+  CLI `--port` > WORKFLOW.md `server.port` > `SYMPHONY_SERVER_PORT` env var.
 
 ### Issue filtering
 

@@ -4,7 +4,8 @@ tracker:
   team_key: "RVR"
   labels: ["symphony"]
   assignee: "me"
-  active_states: ["Todo", "In Progress", "Code Review", "On Staging"]
+  dispatch_states: "Todo, In Progress"
+  active_states: "Todo, In Progress, Code Review, On Staging"
   terminal_states: ["Done", "Canceled"]
 polling:
   interval_ms: 5000
