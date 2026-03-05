@@ -613,7 +613,9 @@ defmodule SymphonyElixir.Orchestrator do
 
   defp dispatch_state_set do
     case Config.linear_dispatch_states() do
-      [] -> active_state_set()
+      [] ->
+        active_state_set()
+
       states when is_list(states) ->
         states
         |> Enum.map(&normalize_issue_state/1)

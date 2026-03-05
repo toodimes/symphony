@@ -18,8 +18,7 @@ _In this [demo video](.github/media/symphony-demo.mp4), Symphony monitors a Line
 
 1. Polls Linear for candidate work
 2. Creates an isolated workspace per issue
-3. Launches Codex in [App Server mode](https://developers.openai.com/codex/app-server/) inside the
-   workspace
+3. Launches Codex in App Server mode inside the workspace
 4. Sends a workflow prompt to Codex
 5. Keeps Codex working on the issue until the work is done
 
@@ -31,8 +30,7 @@ Symphony stops the active agent for that issue and cleans up matching workspaces
 
 ## How to use it
 
-1. Make sure your codebase is set up to work well with agents: see
-   [Harness engineering](https://openai.com/index/harness-engineering/).
+1. Make sure your codebase is set up to work well with agents.
 2. Get a new personal token in Linear via Settings → Security & access → Personal API keys, and
    set it as the `LINEAR_API_KEY` environment variable.
 3. Copy this directory's `WORKFLOW.md` to your repo.
@@ -59,7 +57,7 @@ mise exec -- elixir --version
 ## Run
 
 ```bash
-git clone https://github.com/openai/symphony
+git clone <repo-url>
 cd symphony
 mise trust
 mise install
@@ -144,7 +142,7 @@ hooks:
   after_create: |
     git clone --depth 1 "$SOURCE_REPO_URL" .
 codex:
-  command: "$CODEX_BIN app-server --model gpt-5.3-codex"
+  command: "$CODEX_BIN app-server --model <model>"
 ```
 
 - If `WORKFLOW.md` is missing or has invalid YAML, startup and scheduling are halted until fixed.
