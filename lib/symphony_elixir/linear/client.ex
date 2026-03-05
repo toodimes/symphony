@@ -267,69 +267,33 @@ defmodule SymphonyElixir.Linear.Client do
 
   defp do_fetch_by_states(project_slug, team_key, state_names, assignee_filter) do
     cond do
-      present_tracker_target?(team_key) ->
-        do_fetch_by_team_states_page(team_key, state_names, assignee_filter, nil, [])
+      Config.present_tracker_target?(team_key) ->
+        do_fetch_paginated(@query_by_team, %{teamKey: team_key}, state_names, assignee_filter)
 
-      present_tracker_target?(project_slug) ->
-        do_fetch_by_project_states_page(project_slug, state_names, assignee_filter, nil, [])
+      Config.present_tracker_target?(project_slug) ->
+        do_fetch_paginated(@query_by_project, %{projectSlug: project_slug}, state_names, assignee_filter)
 
       true ->
         {:error, :missing_linear_project_or_team_key}
     end
   end
 
-  defp do_fetch_by_project_states_page(project_slug, state_names, assignee_filter, after_cursor, acc_issues) do
-    with {:ok, body} <-
-           graphql(@query_by_project, %{
-             projectSlug: project_slug,
-             stateNames: state_names,
-             first: @issue_page_size,
-             relationFirst: @issue_page_size,
-             after: after_cursor
-           }),
+  defp do_fetch_paginated(query, target_vars, state_names, assignee_filter, after_cursor \\ nil, acc_issues \\ []) do
+    variables =
+      Map.merge(target_vars, %{
+        stateNames: state_names,
+        first: @issue_page_size,
+        relationFirst: @issue_page_size,
+        after: after_cursor
+      })
+
+    with {:ok, body} <- graphql(query, variables),
          {:ok, issues, page_info} <- decode_linear_page_response(body, assignee_filter) do
       updated_acc = prepend_page_issues(issues, acc_issues)
 
       case next_page_cursor(page_info) do
         {:ok, next_cursor} ->
-          do_fetch_by_project_states_page(
-            project_slug,
-            state_names,
-            assignee_filter,
-            next_cursor,
-            updated_acc
-          )
-
-        :done ->
-          {:ok, finalize_paginated_issues(updated_acc)}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
-    end
-  end
-
-  defp do_fetch_by_team_states_page(team_key, state_names, assignee_filter, after_cursor, acc_issues) do
-    with {:ok, body} <-
-           graphql(@query_by_team, %{
-             teamKey: team_key,
-             stateNames: state_names,
-             first: @issue_page_size,
-             relationFirst: @issue_page_size,
-             after: after_cursor
-           }),
-         {:ok, issues, page_info} <- decode_linear_page_response(body, assignee_filter) do
-      updated_acc = prepend_page_issues(issues, acc_issues)
-
-      case next_page_cursor(page_info) do
-        {:ok, next_cursor} ->
-          do_fetch_by_team_states_page(
-            team_key,
-            state_names,
-            assignee_filter,
-            next_cursor,
-            updated_acc
-          )
+          do_fetch_paginated(query, target_vars, state_names, assignee_filter, next_cursor, updated_acc)
 
         :done ->
           {:ok, finalize_paginated_issues(updated_acc)}
@@ -341,14 +305,9 @@ defmodule SymphonyElixir.Linear.Client do
   end
 
   defp target_configured?(project_slug, team_key) do
-    present_tracker_target?(project_slug) or present_tracker_target?(team_key)
+    Config.present_tracker_target?(project_slug) or Config.present_tracker_target?(team_key)
   end
 
-  defp present_tracker_target?(value) when is_binary(value) do
-    String.trim(value) != ""
-  end
-
-  defp present_tracker_target?(_value), do: false
 
   defp prepend_page_issues(issues, acc_issues) when is_list(issues) and is_list(acc_issues) do
     Enum.reverse(issues, acc_issues)
