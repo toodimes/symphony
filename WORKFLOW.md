@@ -1,7 +1,7 @@
 ---
 tracker:
   kind: linear
-  team_key: "RVR"
+  team_key: "AIW"
   labels: ["symphony"]
   assignee: "me"
   dispatch_states: "Todo, In Progress"
@@ -78,6 +78,7 @@ Requires a Linear MCP server or injected `linear_graphql` tool. If neither is pr
 - Determine the ticket's current status first, then follow the matching flow.
 - Use exactly one persistent `## Codex Workpad` comment per issue for all progress tracking (see template below). Do not post separate summary comments.
 - Plan and verify before implementing. Reproduce the issue signal before changing code.
+  - When you believe you have a plan ready for implementation, use the `/plan-review-iteration` skill to get feedback on your approach.
 - Treat any ticket-authored `Validation`, `Test Plan`, or `Testing` section as mandatory acceptance input — mirror it in the workpad and complete it before handoff.
 - Keep ticket metadata current (state, acceptance criteria, links).
 - Out-of-scope improvements go in a separate Backlog issue (with title, description, acceptance criteria, same project, `related` link to current issue).
@@ -91,7 +92,6 @@ Requires a Linear MCP server or injected `linear_graphql` tool. If neither is pr
 - `Backlog` -> do not modify; wait for human to move to `Todo`.
 - `Todo` -> move to `In Progress`, then start execution flow. If a PR is already attached, run PR feedback sweep first.
 - `In Progress` -> continue execution from the current workpad.
-- `Human Review` -> do not code or change ticket content; poll for review updates.
 - `Merging` -> run the `land` skill (do not call `gh pr merge` directly).
 - `Rework` -> full reset: close existing PR, delete workpad comment, fresh branch from `origin/main`, start over.
 - `Done` -> shut down.
