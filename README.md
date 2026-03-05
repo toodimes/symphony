@@ -151,6 +151,46 @@ codex:
 - `server.port` or CLI `--port` enables the optional Phoenix LiveView dashboard and JSON API at
   `/`, `/api/v1/state`, `/api/v1/<issue_identifier>`, and `/api/v1/refresh`.
 
+### Issue filtering
+
+Symphony can target issues by **project slug** or **team key**, and optionally filter by **label**.
+
+`tracker.team_key` is an alternative to `tracker.project_slug`. When both are set, `team_key` takes
+priority. Use the team's short key from Linear (e.g. `RVR`, `ENG`).
+
+`tracker.labels` is a comma-separated list of Linear labels. When set, only issues carrying at least
+one of the listed labels are dispatched. Label matching is case-insensitive.
+
+```yaml
+tracker:
+  kind: linear
+  team_key: RVR
+  labels: "symphony"
+```
+
+### Dispatch states vs active states
+
+By default, `tracker.active_states` controls both which issues are eligible for new agent dispatch
+and which states keep already-running agents alive. If you want agents to stay alive through later
+pipeline states (like code review or staging) without picking up new issues in those states, use
+`tracker.dispatch_states` to restrict where new agents are created.
+
+When `dispatch_states` is set, only issues in those states get new agents. `active_states` continues
+to govern agent lifecycle — running agents won't be stopped when their issue moves to a state in
+`active_states` but not in `dispatch_states`.
+
+When `dispatch_states` is not set, it defaults to `active_states` (the original behavior).
+
+```yaml
+tracker:
+  dispatch_states: "Todo, In Progress"
+  active_states: "Todo, In Progress, Code Review, On Staging"
+```
+
+In this example, agents are only dispatched to issues in "Todo" or "In Progress". But if an agent is
+already working on an issue and that issue moves to "Code Review" or "On Staging", the agent keeps
+running. Once the issue leaves all active states (or hits a terminal state), the agent is stopped.
+
 ## Web dashboard
 
 The observability UI runs on a minimal Phoenix stack:

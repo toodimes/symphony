@@ -270,7 +270,7 @@ defmodule SymphonyElixir.Orchestrator do
   @doc false
   @spec should_dispatch_issue_for_test(Issue.t(), term()) :: boolean()
   def should_dispatch_issue_for_test(%Issue{} = issue, %State{} = state) do
-    should_dispatch_issue?(issue, state, active_state_set(), terminal_state_set(), label_filter_set())
+    should_dispatch_issue?(issue, state, dispatch_state_set(), terminal_state_set(), label_filter_set())
   end
 
   @doc false
@@ -436,14 +436,14 @@ defmodule SymphonyElixir.Orchestrator do
   defp terminate_task(_pid), do: :ok
 
   defp choose_issues(issues, state) do
-    active_states = active_state_set()
+    dispatch_states = dispatch_state_set()
     terminal_states = terminal_state_set()
     label_filter = label_filter_set()
 
     issues
     |> sort_issues_for_dispatch()
     |> Enum.reduce(state, fn issue, state_acc ->
-      if should_dispatch_issue?(issue, state_acc, active_states, terminal_states, label_filter) do
+      if should_dispatch_issue?(issue, state_acc, dispatch_states, terminal_states, label_filter) do
         dispatch_issue(state_acc, issue)
       else
         state_acc
@@ -593,6 +593,17 @@ defmodule SymphonyElixir.Orchestrator do
     |> Enum.map(&normalize_issue_state/1)
     |> Enum.filter(&(&1 != ""))
     |> MapSet.new()
+  end
+
+  defp dispatch_state_set do
+    case Config.linear_dispatch_states() do
+      [] -> active_state_set()
+      states when is_list(states) ->
+        states
+        |> Enum.map(&normalize_issue_state/1)
+        |> Enum.filter(&(&1 != ""))
+        |> MapSet.new()
+    end
   end
 
   defp label_filter_set do
@@ -1133,7 +1144,7 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   defp retry_candidate_issue?(%Issue{} = issue, terminal_states) do
-    candidate_issue?(issue, active_state_set(), terminal_states) and
+    candidate_issue?(issue, dispatch_state_set(), terminal_states) and
       !todo_issue_blocked_by_non_terminal?(issue, terminal_states)
   end
 
