@@ -1,18 +1,12 @@
 ---
 tracker:
   kind: linear
-  project_slug: "symphony-0c79b11b75ea"
-  active_states:
-    - Todo
-    - In Progress
-    - Merging
-    - Rework
-  terminal_states:
-    - Closed
-    - Cancelled
-    - Canceled
-    - Duplicate
-    - Done
+  team_key: "RVR"
+  labels: ["symphony"]
+  assignee: "me"
+  dispatch_states: "Todo, In Progress"
+  active_states: "Todo, In Progress, Code Review, On Staging"
+  terminal_states: ["Done", "Canceled"]
 polling:
   interval_ms: 5000
 workspace:

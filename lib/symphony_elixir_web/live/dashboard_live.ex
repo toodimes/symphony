@@ -14,6 +14,7 @@ defmodule SymphonyElixirWeb.DashboardLive do
       socket
       |> assign(:payload, load_payload())
       |> assign(:now, DateTime.utc_now())
+      |> assign(:expanded, MapSet.new())
 
     if connected?(socket) do
       :ok = ObservabilityPubSub.subscribe()
@@ -35,6 +36,23 @@ defmodule SymphonyElixirWeb.DashboardLive do
      socket
      |> assign(:payload, load_payload())
      |> assign(:now, DateTime.utc_now())}
+  end
+
+  @impl true
+  def handle_event("noop", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("toggle_row", %{"id" => issue_id}, socket) do
+    expanded = socket.assigns.expanded
+
+    expanded =
+      if MapSet.member?(expanded, issue_id) do
+        MapSet.delete(expanded, issue_id)
+      else
+        MapSet.put(expanded, issue_id)
+      end
+
+    {:noreply, assign(socket, :expanded, expanded)}
   end
 
   @impl true
@@ -149,57 +167,86 @@ defmodule SymphonyElixirWeb.DashboardLive do
                   </tr>
                 </thead>
                 <tbody>
-                  <tr :for={entry <- @payload.running}>
-                    <td>
-                      <div class="issue-stack">
-                        <span class="issue-id"><%= entry.issue_identifier %></span>
-                        <a class="issue-link" href={"/api/v1/#{entry.issue_identifier}"}>JSON details</a>
-                      </div>
-                    </td>
-                    <td>
-                      <span class={state_badge_class(entry.state)}>
-                        <%= entry.state %>
-                      </span>
-                    </td>
-                    <td>
-                      <div class="session-stack">
-                        <%= if entry.session_id do %>
-                          <button
-                            type="button"
-                            class="subtle-button"
-                            data-label="Copy ID"
-                            data-copy={entry.session_id}
-                            onclick="navigator.clipboard.writeText(this.dataset.copy); this.textContent = 'Copied'; clearTimeout(this._copyTimer); this._copyTimer = setTimeout(() => { this.textContent = this.dataset.label }, 1200);"
-                          >
-                            Copy ID
-                          </button>
-                        <% else %>
-                          <span class="muted">n/a</span>
-                        <% end %>
-                      </div>
-                    </td>
-                    <td class="numeric"><%= format_runtime_and_turns(entry.started_at, entry.turn_count, @now) %></td>
-                    <td>
-                      <div class="detail-stack">
-                        <span
-                          class="event-text"
-                          title={entry.last_message || to_string(entry.last_event || "n/a")}
-                        ><%= entry.last_message || to_string(entry.last_event || "n/a") %></span>
-                        <span class="muted event-meta">
-                          <%= entry.last_event || "n/a" %>
-                          <%= if entry.last_event_at do %>
-                            · <span class="mono numeric"><%= entry.last_event_at %></span>
+                  <%= for entry <- @payload.running do %>
+                    <tr class="expandable-row" phx-click="toggle_row" phx-value-id={entry.issue_id}>
+                      <td>
+                        <div class="issue-stack">
+                          <span class="row-chevron"><%= if MapSet.member?(@expanded, entry.issue_id), do: "\u25BE", else: "\u25B8" %></span>
+                          <%= if entry.issue_url do %>
+                            <a class="issue-id" href={entry.issue_url} target="_blank" phx-click="noop" phx-value-id={entry.issue_id} onclick="event.stopPropagation();"><%= entry.issue_identifier %></a>
+                          <% else %>
+                            <span class="issue-id"><%= entry.issue_identifier %></span>
                           <% end %>
+                          <a class="issue-link" href={"/api/v1/#{entry.issue_identifier}"} onclick="event.stopPropagation();">JSON</a>
+                        </div>
+                      </td>
+                      <td>
+                        <span class={state_badge_class(entry.state)}>
+                          <%= entry.state %>
                         </span>
-                      </div>
-                    </td>
-                    <td>
-                      <div class="token-stack numeric">
-                        <span>Total: <%= format_int(entry.tokens.total_tokens) %></span>
-                        <span class="muted">In <%= format_int(entry.tokens.input_tokens) %> / Out <%= format_int(entry.tokens.output_tokens) %></span>
-                      </div>
-                    </td>
-                  </tr>
+                      </td>
+                      <td>
+                        <div class="session-stack">
+                          <%= if entry.session_id do %>
+                            <button
+                              type="button"
+                              class="subtle-button"
+                              data-label="Copy ID"
+                              data-copy={entry.session_id}
+                              onclick="event.stopPropagation(); navigator.clipboard.writeText(this.dataset.copy); this.textContent = 'Copied'; clearTimeout(this._copyTimer); this._copyTimer = setTimeout(() => { this.textContent = this.dataset.label }, 1200);"
+                            >
+                              Copy ID
+                            </button>
+                          <% else %>
+                            <span class="muted">n/a</span>
+                          <% end %>
+                        </div>
+                      </td>
+                      <td class="numeric"><%= format_runtime_and_turns(entry.started_at, entry.turn_count, @now) %></td>
+                      <td>
+                        <div class="detail-stack">
+                          <span
+                            class="event-text"
+                            title={entry.last_message || to_string(entry.last_event || "n/a")}
+                          ><%= entry.last_message || to_string(entry.last_event || "n/a") %></span>
+                          <span class="muted event-meta">
+                            <%= entry.last_event || "n/a" %>
+                            <%= if entry.last_event_at do %>
+                              · <span class="mono numeric"><%= entry.last_event_at %></span>
+                            <% end %>
+                          </span>
+                        </div>
+                      </td>
+                      <td>
+                        <div class="token-stack numeric">
+                          <span>Total: <%= format_int(entry.tokens.total_tokens) %></span>
+                          <span class="muted">In <%= format_int(entry.tokens.input_tokens) %> / Out <%= format_int(entry.tokens.output_tokens) %></span>
+                        </div>
+                      </td>
+                    </tr>
+                    <%= if MapSet.member?(@expanded, entry.issue_id) do %>
+                      <tr class="expanded-detail-row">
+                        <td colspan="6">
+                          <div class="event-log-panel">
+                            <h3 class="event-log-title">Session event log</h3>
+                            <%= if entry.event_log == [] do %>
+                              <p class="empty-state">No events recorded yet.</p>
+                            <% else %>
+                              <div class="event-log-list">
+                                <%= for log_entry <- entry.event_log do %>
+                                  <div class="event-log-entry">
+                                    <span class="event-log-time mono numeric"><%= log_entry.timestamp || "n/a" %></span>
+                                    <span class={event_badge_class(log_entry.event)}><%= log_entry.event || "unknown" %></span>
+                                    <span class="event-log-message"><%= log_entry.message || "" %></span>
+                                  </div>
+                                <% end %>
+                              </div>
+                            <% end %>
+                          </div>
+                        </td>
+                      </tr>
+                    <% end %>
+                  <% end %>
                 </tbody>
               </table>
             </div>
@@ -231,8 +278,12 @@ defmodule SymphonyElixirWeb.DashboardLive do
                   <tr :for={entry <- @payload.retrying}>
                     <td>
                       <div class="issue-stack">
-                        <span class="issue-id"><%= entry.issue_identifier %></span>
-                        <a class="issue-link" href={"/api/v1/#{entry.issue_identifier}"}>JSON details</a>
+                        <%= if entry.issue_url do %>
+                          <a class="issue-id" href={entry.issue_url} target="_blank"><%= entry.issue_identifier %></a>
+                        <% else %>
+                          <span class="issue-id"><%= entry.issue_identifier %></span>
+                        <% end %>
+                        <a class="issue-link" href={"/api/v1/#{entry.issue_identifier}"}>JSON</a>
                       </div>
                     </td>
                     <td><%= entry.attempt %></td>
@@ -317,6 +368,18 @@ defmodule SymphonyElixirWeb.DashboardLive do
       String.contains?(normalized, ["progress", "running", "active"]) -> "#{base} state-badge-active"
       String.contains?(normalized, ["blocked", "error", "failed"]) -> "#{base} state-badge-danger"
       String.contains?(normalized, ["todo", "queued", "pending", "retry"]) -> "#{base} state-badge-warning"
+      true -> base
+    end
+  end
+
+  defp event_badge_class(event) do
+    base = "event-badge"
+    normalized = event |> to_string() |> String.downcase()
+
+    cond do
+      String.contains?(normalized, ["failed", "error", "malformed"]) -> "#{base} event-badge-danger"
+      String.contains?(normalized, ["started", "completed", "approved"]) -> "#{base} event-badge-success"
+      String.contains?(normalized, ["cancelled", "input_required"]) -> "#{base} event-badge-warning"
       true -> base
     end
   end

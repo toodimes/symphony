@@ -75,7 +75,7 @@ defmodule SymphonyElixirWeb.Presenter do
       running: running && running_issue_payload(running),
       retry: retry && retry_issue_payload(retry),
       logs: %{
-        codex_session_logs: []
+        codex_session_logs: (running && format_event_log(Map.get(running, :codex_event_log, []))) || []
       },
       recent_events: (running && recent_events_payload(running)) || [],
       last_error: retry && retry.error,
@@ -98,6 +98,7 @@ defmodule SymphonyElixirWeb.Presenter do
     %{
       issue_id: entry.issue_id,
       issue_identifier: entry.identifier,
+      issue_url: Map.get(entry, :issue_url),
       state: entry.state,
       session_id: entry.session_id,
       turn_count: Map.get(entry, :turn_count, 0),
@@ -105,6 +106,7 @@ defmodule SymphonyElixirWeb.Presenter do
       last_message: summarize_message(entry.last_codex_message),
       started_at: iso8601(entry.started_at),
       last_event_at: iso8601(entry.last_codex_timestamp),
+      event_log: format_event_log(Map.get(entry, :codex_event_log, [])),
       tokens: %{
         input_tokens: entry.codex_input_tokens,
         output_tokens: entry.codex_output_tokens,
@@ -117,6 +119,7 @@ defmodule SymphonyElixirWeb.Presenter do
     %{
       issue_id: entry.issue_id,
       issue_identifier: entry.identifier,
+      issue_url: Map.get(entry, :issue_url),
       attempt: entry.attempt,
       due_at: due_at_iso8601(entry.due_in_ms),
       error: entry.error
@@ -158,6 +161,18 @@ defmodule SymphonyElixirWeb.Presenter do
     ]
     |> Enum.reject(&is_nil(&1.at))
   end
+
+  defp format_event_log(log) when is_list(log) do
+    Enum.map(log, fn entry ->
+      %{
+        event: entry.event,
+        timestamp: iso8601(entry.timestamp),
+        message: summarize_message(entry.message)
+      }
+    end)
+  end
+
+  defp format_event_log(_), do: []
 
   defp summarize_message(nil), do: nil
   defp summarize_message(message), do: StatusDashboard.humanize_codex_message(message)
