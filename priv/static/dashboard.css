@@ -261,6 +261,12 @@ pre,
   display: none;
 }
 
+.status-badge-refresh {
+  background: var(--accent-soft);
+  border-color: rgba(197, 160, 99, 0.20);
+  color: var(--accent-ink);
+}
+
 /* ── Metric cards ──────────────────────────────────────────────── */
 
 .metric-grid {
