@@ -520,12 +520,6 @@ defmodule SymphonyElixir.Config do
     end
   end
 
-  defp present_tracker_target?(value) when is_binary(value) do
-    String.trim(value) != ""
-  end
-
-  defp present_tracker_target?(_value), do: false
-
   defp require_codex_command do
     if byte_size(String.trim(codex_command())) > 0 do
       :ok

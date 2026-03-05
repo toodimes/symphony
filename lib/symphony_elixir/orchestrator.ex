@@ -186,10 +186,6 @@ defmodule SymphonyElixir.Orchestrator do
         Logger.error("Linear tracker target missing in WORKFLOW.md (set tracker.project_slug or tracker.team_key)")
         state
 
-      {:error, :missing_linear_project_or_team_key} ->
-        Logger.error("Linear tracker target missing in WORKFLOW.md (set tracker.project_slug or tracker.team_key)")
-        state
-
       {:error, :missing_tracker_kind} ->
         Logger.error("Tracker kind missing in WORKFLOW.md")
 
