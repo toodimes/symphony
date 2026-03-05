@@ -359,6 +359,125 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
            }
   end
 
+  test "linear_graphql injects bot marker into commentCreate mutation body" do
+    test_pid = self()
+
+    DynamicTool.execute(
+      "linear_graphql",
+      %{
+        "query" => "mutation { commentCreate(input: {issueId: $issueId, body: $body}) { success } }",
+        "variables" => %{"issueId" => "issue-1", "body" => "Hello world"}
+      },
+      linear_client: fn _query, variables, _opts ->
+        send(test_pid, {:variables, variables})
+        {:ok, %{"data" => %{"commentCreate" => %{"success" => true}}}}
+      end
+    )
+
+    assert_received {:variables, variables}
+    assert String.contains?(variables["body"], "<!-- symphony-bot -->")
+    assert String.starts_with?(variables["body"], "Hello world")
+  end
+
+  test "linear_graphql injects bot marker into commentUpdate mutation body" do
+    test_pid = self()
+
+    DynamicTool.execute(
+      "linear_graphql",
+      %{
+        "query" => "mutation { commentUpdate(id: $id, input: {body: $body}) { success } }",
+        "variables" => %{"id" => "comment-1", "body" => "Updated text"}
+      },
+      linear_client: fn _query, variables, _opts ->
+        send(test_pid, {:variables, variables})
+        {:ok, %{"data" => %{"commentUpdate" => %{"success" => true}}}}
+      end
+    )
+
+    assert_received {:variables, variables}
+    assert String.contains?(variables["body"], "<!-- symphony-bot -->")
+  end
+
+  test "linear_graphql does not inject marker for non-comment mutations" do
+    test_pid = self()
+
+    DynamicTool.execute(
+      "linear_graphql",
+      %{
+        "query" => "mutation { issueUpdate(id: $id, input: {title: $body}) { success } }",
+        "variables" => %{"id" => "issue-1", "body" => "New title"}
+      },
+      linear_client: fn _query, variables, _opts ->
+        send(test_pid, {:variables, variables})
+        {:ok, %{"data" => %{"issueUpdate" => %{"success" => true}}}}
+      end
+    )
+
+    assert_received {:variables, variables}
+    refute String.contains?(variables["body"], "<!-- symphony-bot -->")
+  end
+
+  test "linear_graphql marker injection is idempotent" do
+    test_pid = self()
+
+    DynamicTool.execute(
+      "linear_graphql",
+      %{
+        "query" => "mutation { commentUpdate(id: $id, input: {body: $body}) { success } }",
+        "variables" => %{"id" => "c1", "body" => "Already marked\n<!-- symphony-bot -->"}
+      },
+      linear_client: fn _query, variables, _opts ->
+        send(test_pid, {:variables, variables})
+        {:ok, %{"data" => %{"commentUpdate" => %{"success" => true}}}}
+      end
+    )
+
+    assert_received {:variables, variables}
+    # Should not have doubled the marker
+    assert variables["body"] == "Already marked\n<!-- symphony-bot -->"
+  end
+
+  test "linear_graphql preserves atom key form for body variable" do
+    test_pid = self()
+
+    DynamicTool.execute(
+      "linear_graphql",
+      %{
+        "query" => "mutation { commentCreate(input: {body: $body}) { success } }",
+        "variables" => %{body: "Atom key body"}
+      },
+      linear_client: fn _query, variables, _opts ->
+        send(test_pid, {:variables, variables})
+        {:ok, %{"data" => %{"commentCreate" => %{"success" => true}}}}
+      end
+    )
+
+    assert_received {:variables, variables}
+    assert Map.has_key?(variables, :body)
+    refute Map.has_key?(variables, "body")
+    assert String.contains?(variables[:body], "<!-- symphony-bot -->")
+  end
+
+  test "linear_graphql skips marker injection when no body variable exists" do
+    test_pid = self()
+
+    DynamicTool.execute(
+      "linear_graphql",
+      %{
+        "query" => "mutation { commentCreate(input: {issueId: $issueId, body: \"inline\"}) { success } }",
+        "variables" => %{"issueId" => "issue-1"}
+      },
+      linear_client: fn _query, variables, _opts ->
+        send(test_pid, {:variables, variables})
+        {:ok, %{"data" => %{"commentCreate" => %{"success" => true}}}}
+      end
+    )
+
+    assert_received {:variables, variables}
+    refute Map.has_key?(variables, "body")
+    refute Map.has_key?(variables, :body)
+  end
+
   test "linear_graphql falls back to inspect for non-JSON payloads" do
     response =
       DynamicTool.execute(

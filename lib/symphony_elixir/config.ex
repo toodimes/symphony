@@ -40,6 +40,7 @@ defmodule SymphonyElixir.Config do
     }
   }
   @default_codex_thread_sandbox "workspace-write"
+  @default_track_comments false
   @default_observability_enabled true
   @default_observability_refresh_ms 1_000
   @default_observability_render_interval_ms 16
@@ -64,6 +65,10 @@ defmodule SymphonyElixir.Config do
                                  terminal_states: [
                                    type: {:list, :string},
                                    default: @default_terminal_states
+                                 ],
+                                 track_comments: [
+                                   type: :boolean,
+                                   default: @default_track_comments
                                  ]
                                ]
                              ],
@@ -235,6 +240,11 @@ defmodule SymphonyElixir.Config do
   @spec linear_terminal_states() :: [String.t()]
   def linear_terminal_states do
     get_in(validated_workflow_options(), [:tracker, :terminal_states])
+  end
+
+  @spec linear_track_comments?() :: boolean()
+  def linear_track_comments? do
+    get_in(validated_workflow_options(), [:tracker, :track_comments])
   end
 
   @spec poll_interval_ms() :: pos_integer()
@@ -486,6 +496,7 @@ defmodule SymphonyElixir.Config do
     |> put_if_present(:dispatch_states, csv_value(Map.get(section, "dispatch_states")))
     |> put_if_present(:active_states, csv_value(Map.get(section, "active_states")))
     |> put_if_present(:terminal_states, csv_value(Map.get(section, "terminal_states")))
+    |> put_if_present(:track_comments, boolean_value(Map.get(section, "track_comments")))
   end
 
   defp extract_polling_options(section) do

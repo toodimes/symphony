@@ -355,6 +355,12 @@ Fields:
   - Default: `Todo`, `In Progress`
 - `terminal_states` (list of strings or comma-separated string)
   - Default: `Closed`, `Cancelled`, `Canceled`, `Duplicate`, `Done`
+- `track_comments` (boolean)
+  - Default: `false`
+  - When enabled, the orchestrator fetches issue comments between agent turns and surfaces new
+    human comments in the continuation prompt. Bot-authored comments are identified by an invisible
+    HTML marker (`<!-- symphony-bot -->`) injected into every comment the agent creates via the
+    `linear_graphql` dynamic tool.
 
 #### 5.3.2 `polling` (object)
 

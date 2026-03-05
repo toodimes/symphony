@@ -4,9 +4,10 @@ defmodule SymphonyElixir.Linear.Client do
   """
 
   require Logger
-  alias SymphonyElixir.{Config, Linear.Issue}
+  alias SymphonyElixir.{Config, Linear.Comment, Linear.Issue}
 
   @issue_page_size 50
+  @comment_page_size 100
   @max_error_body_log_bytes 1_000
 
   @query_by_project """
@@ -148,6 +149,29 @@ defmodule SymphonyElixir.Linear.Client do
   }
   """
 
+  @comments_query """
+  query SymphonyLinearIssueComments($issueId: String!, $first: Int!, $after: String) {
+    issue(id: $issueId) {
+      comments(first: $first, after: $after, orderBy: createdAt) {
+        nodes {
+          id
+          body
+          createdAt
+          updatedAt
+          user {
+            id
+            displayName
+          }
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  }
+  """
+
   @spec fetch_candidate_issues() :: {:ok, [Issue.t()]} | {:error, term()}
   def fetch_candidate_issues do
     project_slug = Config.linear_project_slug()
@@ -203,6 +227,11 @@ defmodule SymphonyElixir.Linear.Client do
           do_fetch_issue_states(ids, assignee_filter)
         end
     end
+  end
+
+  @spec fetch_issue_comments(String.t()) :: {:ok, [Comment.t()]} | {:error, term()}
+  def fetch_issue_comments(issue_id) when is_binary(issue_id) do
+    do_fetch_comments(issue_id, nil, [])
   end
 
   @spec graphql(String.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
@@ -326,6 +355,39 @@ defmodule SymphonyElixir.Linear.Client do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp do_fetch_comments(issue_id, after_cursor, acc_comments) do
+    variables = %{issueId: issue_id, first: @comment_page_size, after: after_cursor}
+
+    case graphql(@comments_query, variables) do
+      {:ok, %{"data" => %{"issue" => %{"comments" => %{"nodes" => nodes, "pageInfo" => page_info}}}}} ->
+        comments = Enum.map(nodes, &normalize_comment/1)
+        updated_acc = acc_comments ++ comments
+
+        case next_page_cursor(%{has_next_page: page_info["hasNextPage"] == true, end_cursor: page_info["endCursor"]}) do
+          {:ok, next_cursor} -> do_fetch_comments(issue_id, next_cursor, updated_acc)
+          :done -> {:ok, updated_acc}
+          {:error, reason} -> {:error, reason}
+        end
+
+      {:ok, _body} ->
+        {:ok, acc_comments}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp normalize_comment(comment) when is_map(comment) do
+    %Comment{
+      id: comment["id"],
+      body: comment["body"],
+      user_id: get_in(comment, ["user", "id"]),
+      user_name: get_in(comment, ["user", "displayName"]),
+      created_at: parse_datetime(comment["createdAt"]),
+      updated_at: parse_datetime(comment["updatedAt"])
+    }
   end
 
   defp build_graphql_payload(query, variables, operation_name) do

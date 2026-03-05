@@ -5,6 +5,7 @@ defmodule SymphonyElixir.Codex.DynamicTool do
 
   alias SymphonyElixir.Linear.Client
 
+  @bot_comment_marker "\n<!-- symphony-bot -->"
   @linear_graphql_tool "linear_graphql"
   @linear_graphql_description """
   Execute a raw GraphQL query or mutation against Linear using Symphony's configured auth.
@@ -56,9 +57,13 @@ defmodule SymphonyElixir.Codex.DynamicTool do
   defp execute_linear_graphql(arguments, opts) do
     linear_client = Keyword.get(opts, :linear_client, &Client.graphql/3)
 
-    with {:ok, query, variables} <- normalize_linear_graphql_arguments(arguments),
-         {:ok, response} <- linear_client.(query, variables, []) do
-      graphql_response(response)
+    with {:ok, query, variables} <- normalize_linear_graphql_arguments(arguments) do
+      variables = maybe_mark_bot_comment(query, variables)
+
+      case linear_client.(query, variables, []) do
+        {:ok, response} -> graphql_response(response)
+        {:error, reason} -> failure_response(tool_error_payload(reason))
+      end
     else
       {:error, reason} ->
         failure_response(tool_error_payload(reason))
@@ -107,6 +112,45 @@ defmodule SymphonyElixir.Codex.DynamicTool do
     case Map.get(arguments, "variables") || Map.get(arguments, :variables) || %{} do
       variables when is_map(variables) -> {:ok, variables}
       _ -> {:error, :invalid_variables}
+    end
+  end
+
+  defp maybe_mark_bot_comment(query, variables) when is_binary(query) and is_map(variables) do
+    if comment_mutation?(query) do
+      inject_bot_marker(variables)
+    else
+      variables
+    end
+  end
+
+  defp maybe_mark_bot_comment(_query, variables), do: variables
+
+  defp comment_mutation?(query) do
+    downcased = String.downcase(query)
+    String.contains?(downcased, "commentcreate") or String.contains?(downcased, "commentupdate")
+  end
+
+  defp inject_bot_marker(variables) do
+    {key, body} = find_body_variable(variables)
+
+    case body do
+      body when is_binary(body) ->
+        if String.contains?(body, "<!-- symphony-bot -->") do
+          variables
+        else
+          Map.put(variables, key, body <> @bot_comment_marker)
+        end
+
+      _ ->
+        variables
+    end
+  end
+
+  defp find_body_variable(variables) do
+    cond do
+      Map.has_key?(variables, "body") -> {"body", Map.get(variables, "body")}
+      Map.has_key?(variables, :body) -> {:body, Map.get(variables, :body)}
+      true -> {nil, nil}
     end
   end
 

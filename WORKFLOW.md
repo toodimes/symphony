@@ -13,6 +13,7 @@ tracker:
     - Canceled
     - Duplicate
     - Done
+  # track_comments: true
 polling:
   interval_ms: 5000
 workspace:

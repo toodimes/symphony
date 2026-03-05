@@ -5,7 +5,7 @@ defmodule SymphonyElixir.AgentRunner do
 
   require Logger
   alias SymphonyElixir.Codex.AppServer
-  alias SymphonyElixir.{Config, Linear.Issue, PromptBuilder, Tracker, Workspace}
+  alias SymphonyElixir.{Config, Linear.CommentFetcher, Linear.Issue, PromptBuilder, Tracker, Workspace}
 
   @spec run(map(), pid() | nil, keyword()) :: :ok | no_return()
   def run(issue, codex_update_recipient \\ nil, opts \\ []) do
@@ -49,18 +49,50 @@ defmodule SymphonyElixir.AgentRunner do
   defp run_codex_turns(workspace, issue, codex_update_recipient, opts) do
     max_turns = Keyword.get(opts, :max_turns, Config.agent_max_turns())
     issue_state_fetcher = Keyword.get(opts, :issue_state_fetcher, &Tracker.fetch_issue_states_by_ids/1)
+    track_comments? = Keyword.get(opts, :track_comments, Config.linear_track_comments?())
+
+    {initial_comments, seen_comments} =
+      if track_comments? do
+        CommentFetcher.fetch_new_human_comments(issue.id, issue.identifier, %{}, opts)
+      else
+        {[], %{}}
+      end
 
     with {:ok, session} <- AppServer.start_session(workspace) do
       try do
-        do_run_codex_turns(session, workspace, issue, codex_update_recipient, opts, issue_state_fetcher, 1, max_turns)
+        do_run_codex_turns(
+          session,
+          workspace,
+          issue,
+          codex_update_recipient,
+          opts,
+          issue_state_fetcher,
+          1,
+          max_turns,
+          track_comments?,
+          seen_comments,
+          initial_comments
+        )
       after
         AppServer.stop_session(session)
       end
     end
   end
 
-  defp do_run_codex_turns(app_session, workspace, issue, codex_update_recipient, opts, issue_state_fetcher, turn_number, max_turns) do
-    prompt = build_turn_prompt(issue, opts, turn_number, max_turns)
+  defp do_run_codex_turns(
+         app_session,
+         workspace,
+         issue,
+         codex_update_recipient,
+         opts,
+         issue_state_fetcher,
+         turn_number,
+         max_turns,
+         track_comments?,
+         seen_comments,
+         pending_comments
+       ) do
+    prompt = build_turn_prompt(issue, opts, turn_number, max_turns, pending_comments)
 
     with {:ok, turn_session} <-
            AppServer.run_turn(
@@ -75,6 +107,18 @@ defmodule SymphonyElixir.AgentRunner do
         {:continue, refreshed_issue} when turn_number < max_turns ->
           Logger.info("Continuing agent run for #{issue_context(refreshed_issue)} after normal turn completion turn=#{turn_number}/#{max_turns}")
 
+          {new_comments, updated_seen} =
+            if track_comments? do
+              CommentFetcher.fetch_new_human_comments(
+                refreshed_issue.id,
+                refreshed_issue.identifier,
+                seen_comments,
+                opts
+              )
+            else
+              {[], seen_comments}
+            end
+
           do_run_codex_turns(
             app_session,
             workspace,
@@ -83,7 +127,10 @@ defmodule SymphonyElixir.AgentRunner do
             opts,
             issue_state_fetcher,
             turn_number + 1,
-            max_turns
+            max_turns,
+            track_comments?,
+            updated_seen,
+            new_comments
           )
 
         {:continue, refreshed_issue} ->
@@ -100,11 +147,24 @@ defmodule SymphonyElixir.AgentRunner do
     end
   end
 
-  defp build_turn_prompt(issue, opts, 1, _max_turns), do: PromptBuilder.build_prompt(issue, opts)
+  defp build_turn_prompt(issue, opts, 1, _max_turns, comments) do
+    base_prompt = PromptBuilder.build_prompt(issue, opts)
 
-  defp build_turn_prompt(_issue, _opts, turn_number, max_turns) do
+    case CommentFetcher.format_comments_for_prompt(comments, "Existing comments on the Linear issue:") do
+      nil -> base_prompt
+      comment_section -> base_prompt <> "\n\n" <> comment_section
+    end
+  end
+
+  defp build_turn_prompt(_issue, _opts, turn_number, max_turns, comments) do
+    comment_section =
+      case CommentFetcher.format_comments_for_prompt(comments, "New comments on the Linear issue since your last turn:") do
+        nil -> ""
+        section -> section <> "\n\n"
+      end
+
     """
-    Continuation guidance:
+    #{comment_section}Continuation guidance:
 
     - The previous Codex turn completed normally, but the Linear issue is still in an active state.
     - This is continuation turn ##{turn_number} of #{max_turns} for the current agent run.
