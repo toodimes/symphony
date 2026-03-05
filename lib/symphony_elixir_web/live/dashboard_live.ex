@@ -30,12 +30,12 @@ defmodule SymphonyElixirWeb.DashboardLive do
   @impl true
   def handle_info(:runtime_tick, socket) do
     schedule_runtime_tick()
+
     {:noreply,
      socket
      |> assign(:payload, load_payload())
      |> assign(:now, DateTime.utc_now())
-     |> assign(:refresh_countdown_seconds, div(@runtime_tick_ms, 1000))
-    }
+     |> assign(:refresh_countdown_seconds, div(@runtime_tick_ms, 1000))}
   end
 
   @impl true
