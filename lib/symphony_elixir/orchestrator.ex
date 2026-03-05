@@ -184,6 +184,10 @@ defmodule SymphonyElixir.Orchestrator do
         Logger.error("Linear API token missing in WORKFLOW.md")
         state
 
+      {:error, :missing_openai_api_token} ->
+        Logger.error("OpenAI API token missing - set OPENAI_API_KEY environment variable")
+        state
+
       {:error, :missing_linear_project_or_team_key} ->
         Logger.error("Linear tracker target missing in WORKFLOW.md (set tracker.project_slug or tracker.team_key)")
         state

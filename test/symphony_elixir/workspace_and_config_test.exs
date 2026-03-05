@@ -640,7 +640,11 @@ defmodule SymphonyElixir.WorkspaceAndConfigTest do
   test "config reads defaults for optional settings" do
     previous_linear_api_key = System.get_env("LINEAR_API_KEY")
     on_exit(fn -> restore_env("LINEAR_API_KEY", previous_linear_api_key) end)
+    previous_openai_api_key = System.get_env("OPENAI_API_KEY")
+
     System.delete_env("LINEAR_API_KEY")
+    on_exit(fn -> restore_env("OPENAI_API_KEY", previous_openai_api_key) end)
+    System.put_env("OPENAI_API_KEY", "test_openai_key")
 
     write_workflow_file!(Workflow.workflow_file_path(),
       workspace_root: nil,

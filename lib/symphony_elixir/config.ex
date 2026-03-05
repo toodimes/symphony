@@ -199,6 +199,12 @@ defmodule SymphonyElixir.Config do
     |> normalize_secret_value()
   end
 
+  @spec openai_api_token() :: String.t() | nil
+  def openai_api_token do
+    System.get_env("OPENAI_API_KEY")
+    |> normalize_secret_value()
+  end
+
   @spec linear_project_slug() :: String.t() | nil
   def linear_project_slug do
     get_in(validated_workflow_options(), [:tracker, :project_slug])
@@ -400,6 +406,7 @@ defmodule SymphonyElixir.Config do
     with {:ok, _workflow} <- current_workflow(),
          :ok <- require_tracker_kind(),
          :ok <- require_linear_token(),
+         :ok <- require_openai_token(),
          :ok <- require_linear_target(),
          :ok <- require_valid_codex_runtime_settings() do
       require_codex_command()
@@ -440,6 +447,14 @@ defmodule SymphonyElixir.Config do
 
       _ ->
         :ok
+    end
+  end
+
+  defp require_openai_token do
+    if is_binary(openai_api_token()) do
+      :ok
+    else
+      {:error, :missing_openai_api_token}
     end
   end
 
