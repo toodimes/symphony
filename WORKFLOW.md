@@ -1,19 +1,19 @@
 ---
 tracker:
   kind: linear
-  team_key: "RVR"
+  team_key: "AIW"
   labels: ["symphony"]
   assignee: "me"
   dispatch_states: "Todo, In Progress"
   active_states: "Todo, In Progress, Code Review, On Staging"
-  terminal_states: ["Done", "Canceled"]
+  terminal_states: "Done, Canceled"
 polling:
   interval_ms: 5000
 workspace:
   root: ~/code/symphony-workspaces
 hooks:
   after_create: |
-    git clone --depth 1 https://github.com/openai/symphony .
+    git clone --depth 1 https://github.com/toodimes/symphony .
     if command -v mise >/dev/null 2>&1; then
       cd elixir && mise trust && mise exec -- mix deps.get
     fi
@@ -27,7 +27,7 @@ claude:
   command: claude
   permission_mode: bypassPermissions
 codex:
-  command: codex --config shell_environment_policy.inherit=all --config model_reasoning_effort=xhigh --model gpt-5.3-codex app-server
+  command: codex --config shell_environment_policy.inherit=all --config model_reasoning_effort=high --model gpt-5.3-codex app-server
   approval_policy: never
   thread_sandbox: workspace-write
   turn_sandbox_policy:
