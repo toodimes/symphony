@@ -7,6 +7,7 @@ defmodule SymphonyElixirWeb.DashboardLive do
 
   alias SymphonyElixirWeb.{Endpoint, ObservabilityPubSub, Presenter}
   @runtime_tick_ms 1_000
+  @countdown_tick_ms 1_000
 
   @impl true
   def mount(_params, _session, socket) do
@@ -15,10 +16,12 @@ defmodule SymphonyElixirWeb.DashboardLive do
       |> assign(:payload, load_payload())
       |> assign(:now, DateTime.utc_now())
       |> assign(:expanded, MapSet.new())
+      |> assign(:refresh_countdown_seconds, div(@runtime_tick_ms, 1000))
 
     if connected?(socket) do
       :ok = ObservabilityPubSub.subscribe()
       schedule_runtime_tick()
+      schedule_countdown_tick()
     end
 
     {:ok, socket}
@@ -27,7 +30,21 @@ defmodule SymphonyElixirWeb.DashboardLive do
   @impl true
   def handle_info(:runtime_tick, socket) do
     schedule_runtime_tick()
-    {:noreply, assign(socket, :now, DateTime.utc_now())}
+    {:noreply,
+     socket
+     |> assign(:payload, load_payload())
+     |> assign(:now, DateTime.utc_now())
+     |> assign(:refresh_countdown_seconds, div(@runtime_tick_ms, 1000))
+    }
+  end
+
+  @impl true
+  def handle_info(:countdown_tick, socket) do
+    current_countdown = Map.get(socket.assigns, :refresh_countdown_seconds, 0)
+    new_countdown = max(current_countdown - 1, 0)
+
+    schedule_countdown_tick()
+    {:noreply, assign(socket, :refresh_countdown_seconds, new_countdown)}
   end
 
   @impl true
@@ -81,6 +98,9 @@ defmodule SymphonyElixirWeb.DashboardLive do
             <span class="status-badge status-badge-offline">
               <span class="status-badge-dot"></span>
               Offline
+            </span>
+            <span class="status-badge status-badge-refresh">
+              Refreshes in <%= @refresh_countdown_seconds %>s
             </span>
           </div>
         </div>
@@ -386,6 +406,10 @@ defmodule SymphonyElixirWeb.DashboardLive do
 
   defp schedule_runtime_tick do
     Process.send_after(self(), :runtime_tick, @runtime_tick_ms)
+  end
+
+  defp schedule_countdown_tick do
+    Process.send_after(self(), :countdown_tick, @countdown_tick_ms)
   end
 
   defp pretty_value(nil), do: "n/a"
