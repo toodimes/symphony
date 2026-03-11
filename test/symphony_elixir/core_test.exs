@@ -2,73 +2,80 @@ defmodule SymphonyElixir.CoreTest do
   use SymphonyElixir.TestSupport
 
   test "config defaults and validation checks" do
-    write_workflow_file!(Workflow.workflow_file_path(),
-      tracker_api_token: nil,
-      tracker_project_slug: nil,
-      poll_interval_ms: nil,
-      tracker_active_states: nil,
-      tracker_terminal_states: nil,
-      codex_command: nil
-    )
+    old_openai_key = System.get_env("OPENAI_API_KEY")
+    System.put_env("OPENAI_API_KEY", "test_key")
 
-    assert Config.poll_interval_ms() == 30_000
-    assert Config.linear_active_states() == ["Todo", "In Progress"]
-    assert Config.linear_terminal_states() == ["Closed", "Cancelled", "Canceled", "Duplicate", "Done"]
-    assert Config.linear_assignee() == nil
-    assert Config.agent_max_turns() == 20
+    try do
+      write_workflow_file!(Workflow.workflow_file_path(),
+        tracker_api_token: nil,
+        tracker_project_slug: nil,
+        poll_interval_ms: nil,
+        tracker_active_states: nil,
+        tracker_terminal_states: nil,
+        codex_command: nil
+      )
 
-    write_workflow_file!(Workflow.workflow_file_path(), poll_interval_ms: "invalid")
-    assert Config.poll_interval_ms() == 30_000
+      assert Config.poll_interval_ms() == 30_000
+      assert Config.linear_active_states() == ["Todo", "In Progress"]
+      assert Config.linear_terminal_states() == ["Closed", "Cancelled", "Canceled", "Duplicate", "Done"]
+      assert Config.linear_assignee() == nil
+      assert Config.agent_max_turns() == 20
 
-    write_workflow_file!(Workflow.workflow_file_path(), poll_interval_ms: 45_000)
-    assert Config.poll_interval_ms() == 45_000
+      write_workflow_file!(Workflow.workflow_file_path(), poll_interval_ms: "invalid")
+      assert Config.poll_interval_ms() == 30_000
 
-    write_workflow_file!(Workflow.workflow_file_path(), max_turns: 0)
-    assert Config.agent_max_turns() == 20
+      write_workflow_file!(Workflow.workflow_file_path(), poll_interval_ms: 45_000)
+      assert Config.poll_interval_ms() == 45_000
 
-    write_workflow_file!(Workflow.workflow_file_path(), max_turns: 5)
-    assert Config.agent_max_turns() == 5
+      write_workflow_file!(Workflow.workflow_file_path(), max_turns: 0)
+      assert Config.agent_max_turns() == 20
 
-    write_workflow_file!(Workflow.workflow_file_path(), tracker_active_states: "Todo,  Review,")
-    assert Config.linear_active_states() == ["Todo", "Review"]
+      write_workflow_file!(Workflow.workflow_file_path(), max_turns: 5)
+      assert Config.agent_max_turns() == 5
 
-    write_workflow_file!(Workflow.workflow_file_path(),
-      tracker_api_token: "token",
-      tracker_project_slug: nil
-    )
+      write_workflow_file!(Workflow.workflow_file_path(), tracker_active_states: "Todo,  Review,")
+      assert Config.linear_active_states() == ["Todo", "Review"]
 
-    assert {:error, :missing_linear_project_or_team_key} = Config.validate!()
+      write_workflow_file!(Workflow.workflow_file_path(),
+        tracker_api_token: "token",
+        tracker_project_slug: nil
+      )
 
-    write_workflow_file!(Workflow.workflow_file_path(),
-      tracker_project_slug: "project",
-      codex_command: ""
-    )
+      assert {:error, :missing_linear_project_or_team_key} = Config.validate!()
 
-    assert :ok = Config.validate!()
+      write_workflow_file!(Workflow.workflow_file_path(),
+        tracker_project_slug: "project",
+        codex_command: ""
+      )
 
-    write_workflow_file!(Workflow.workflow_file_path(), codex_command: "/bin/sh app-server")
-    assert :ok = Config.validate!()
+      assert :ok = Config.validate!()
 
-    write_workflow_file!(Workflow.workflow_file_path(), codex_approval_policy: "definitely-not-valid")
-    assert :ok = Config.validate!()
+      write_workflow_file!(Workflow.workflow_file_path(), codex_command: "/bin/sh app-server")
+      assert :ok = Config.validate!()
 
-    write_workflow_file!(Workflow.workflow_file_path(), codex_thread_sandbox: "unsafe-ish")
-    assert :ok = Config.validate!()
+      write_workflow_file!(Workflow.workflow_file_path(), codex_approval_policy: "definitely-not-valid")
+      assert :ok = Config.validate!()
 
-    write_workflow_file!(Workflow.workflow_file_path(),
-      codex_turn_sandbox_policy: %{type: "workspaceWrite", writableRoots: ["relative/path"]}
-    )
+      write_workflow_file!(Workflow.workflow_file_path(), codex_thread_sandbox: "unsafe-ish")
+      assert :ok = Config.validate!()
 
-    assert :ok = Config.validate!()
+      write_workflow_file!(Workflow.workflow_file_path(),
+        codex_turn_sandbox_policy: %{type: "workspaceWrite", writableRoots: ["relative/path"]}
+      )
 
-    write_workflow_file!(Workflow.workflow_file_path(), codex_approval_policy: 123)
-    assert {:error, {:invalid_codex_approval_policy, 123}} = Config.validate!()
+      assert :ok = Config.validate!()
 
-    write_workflow_file!(Workflow.workflow_file_path(), codex_thread_sandbox: 123)
-    assert {:error, {:invalid_codex_thread_sandbox, 123}} = Config.validate!()
+      write_workflow_file!(Workflow.workflow_file_path(), codex_approval_policy: 123)
+      assert {:error, {:invalid_codex_approval_policy, 123}} = Config.validate!()
 
-    write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: 123)
-    assert {:error, {:unsupported_tracker_kind, "123"}} = Config.validate!()
+      write_workflow_file!(Workflow.workflow_file_path(), codex_thread_sandbox: 123)
+      assert {:error, {:invalid_codex_thread_sandbox, 123}} = Config.validate!()
+
+      write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: 123)
+      assert {:error, {:unsupported_tracker_kind, "123"}} = Config.validate!()
+    after
+      restore_env("OPENAI_API_KEY", old_openai_key)
+    end
   end
 
   test "current WORKFLOW.md file is valid and complete" do
@@ -101,8 +108,11 @@ defmodule SymphonyElixir.CoreTest do
   test "linear api token resolves from LINEAR_API_KEY env var" do
     previous_linear_api_key = System.get_env("LINEAR_API_KEY")
     env_api_key = "test-linear-api-key"
+    previous_openai_api_key = System.get_env("OPENAI_API_KEY")
 
     on_exit(fn -> restore_env("LINEAR_API_KEY", previous_linear_api_key) end)
+    on_exit(fn -> restore_env("OPENAI_API_KEY", previous_openai_api_key) end)
+    System.put_env("OPENAI_API_KEY", "test_openai_key")
     System.put_env("LINEAR_API_KEY", env_api_key)
 
     write_workflow_file!(Workflow.workflow_file_path(),
